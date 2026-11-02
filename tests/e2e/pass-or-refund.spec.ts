@@ -54,7 +54,8 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("fail-count")).toContainText("1 of 2");
     // Next keeps the course page mounted but hidden, so only the visible copy counts.
     await expect(page.getByTestId("guarantee").filter({ visible: true })).toBeVisible();
-    await page.screenshot({ path: "screenshots/graded-result.png", fullPage: true });
+    await page.getByTestId("attempt-1").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "screenshots/graded-result.png" });
 
     const second = await attempt(page, "fail2", 2);
     expect(second).toBeLessThan(66);
@@ -72,7 +73,7 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED");
     await expect(page.getByTestId("capture-status")).toHaveText("REFUNDED");
     await expect(page.getByTestId("refund-amount")).toHaveText(`$${PRICE}`);
-    await page.screenshot({ path: "screenshots/refund-issued.png", fullPage: true });
+    await page.screenshot({ path: "screenshots/refund-issued.png" });
 
     const { refund } = await enrollmentOf(request, id);
     await expect(page.getByTestId("refund-id")).toHaveText(refund!.refundId!);

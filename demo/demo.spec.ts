@@ -1,69 +1,69 @@
 /**
- * DEMO VIDEO TEMPLATE (npm run demo:record). Drives a scripted flow, captions each step, and
- * saves a .webm to videos/. Replace the scenes with your app's story; keep it under ~2:50.
+ * DEMO VIDEO (npm run demo:record). The story: a learner buys a course, fails twice, a person
+ * approves, and PayPal pays them back. Stays under ~2:50.
  */
 import { expect, test } from "@playwright/test";
 import { caption, DemoClock, highlight, titleCard } from "./captions";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 test("demo", async ({ page, request }) => {
   const clock = new DemoClock(170);
-  await request.post("/api/dev/reset");
+  const sandbox = (await (await request.get("/api/kit/status")).json()).paypal.mode === "sandbox";
 
   // Scene 1: the pitch
   await page.goto("/");
-  await titleCard(page, "PayPal Agent Kit", "AI agents that move money safely, with a human in the loop");
-  await caption(page, "Merchants lose hours settling partial shipments by hand.");
-  await page.mouse.wheel(0, 700);
-  await caption(page, "This agent does it with PayPal: every step is visible, capped and auditable.");
+  await titleCard(page, "Pass or Refund", "Pass the course, or get your money back");
+  await caption(page, "Course guarantees are usually small print. This one pays out.");
   clock.check("pitch");
 
-  // Scene 2: buyer approves a hold
-  await page.goto("/example");
-  await caption(page, "A customer orders three items for $120 and pays with PayPal.", { wait: false });
-  // Sandbox (PAYPAL_MODE=sandbox) pays with PayPal's test card; the real button needs a buyer login.
-  const sandbox = (await (await request.get("/api/kit/status")).json()).paypal.mode === "sandbox";
-  const pay = page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval");
-  await pay.waitFor();
-  await highlight(page, pay);
-  await pay.click();
-  if (!sandbox) {
-    await sleep(900);
-    await page.getByTestId("mock-approve").click();
-  }
-  await expect(page.getByTestId("authorization-panel")).toContainText("Created");
-  await caption(page, "PayPal authorizes a $120 hold. Nothing is charged yet.");
-  clock.check("authorized");
+  // Scene 2: buying, with the guarantee in view
+  await page.goto("/course");
+  await page.getByTestId("guarantee").waitFor();
+  await highlight(page, page.getByTestId("guarantee"));
+  await caption(page, "The guarantee sits right next to the pay button.");
+  await page.getByTestId("learner-name").fill("Alex Rivera");
+  await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
+  if (!sandbox) await page.getByTestId("mock-approve").click();
+  await page.waitForURL(/\/learn\/en_/, { timeout: 60_000 });
+  await caption(page, "PayPal takes the payment. Every call shows on the timeline.");
+  clock.check("bought");
 
-  // Scene 3: the agent settles it
-  await caption(page, "Only two items ship. We ask the settlement agent to handle it.", { wait: false });
-  await highlight(page, page.getByTestId("run-agent"));
-  await page.getByTestId("run-agent").click();
-  const prompt = page.getByTestId("approval-prompt");
-  await expect(prompt).toBeVisible({ timeout: 90_000 });
-  await caption(page, "It wants to capture $80. That is above our $50 limit, so it waits for a human.");
-  await highlight(page, prompt.getByTestId("approve-button"));
-  await prompt.getByTestId("approve-button").click();
-  await expect(page.getByTestId("authorization-panel")).toContainText("Voided", { timeout: 90_000 });
-  await caption(page, "Approved: $80 captured, and the remaining $40 hold released to the buyer.");
-  clock.check("settled");
+  // Scene 3: first fail
+  await page.getByTestId("sample-fail1").click();
+  await page.getByTestId("submit-attempt").click();
+  await page.getByTestId("attempt-1").waitFor({ timeout: 90_000 });
+  await page.getByTestId("attempt-1").scrollIntoViewIfNeeded();
+  await caption(page, "Claude marks every rubric item and quotes the answer. Code adds up the score.");
+  await page.getByTestId("study-list").scrollIntoViewIfNeeded();
+  await caption(page, "What was missed becomes the study list. One more try.");
+  clock.check("first fail");
 
-  // Scene 4: proof
-  await page.getByText("PayPal ledger").scrollIntoViewIfNeeded();
-  await caption(page, "Every PayPal call, webhook and decision is recorded.");
+  // Scene 4: second fail
+  await page.getByTestId("sample-fail2").click();
+  await page.getByTestId("submit-attempt").click();
+  await page.getByTestId("refund-waiting").waitFor({ timeout: 90_000 });
+  await caption(page, "A second real try fails too. The refund is due, but no money has moved.");
+  clock.check("second fail");
+
+  // Scene 5: a person approves
+  await page.getByTestId("refund-waiting").getByRole("link").click();
+  const approve = page.getByTestId("approve-button").first();
+  await approve.waitFor();
+  await highlight(page, approve);
+  await caption(page, "AI suggests, policy decides, and a person approves before any money moves.");
+  await approve.click();
+  await expect(page.getByText("Refunded", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  clock.check("approved");
+
+  // Scene 6: the refund
+  await page.getByTestId("learner-link").first().click();
+  await page.getByTestId("refund-issued").waitFor();
+  await caption(page, "A real PayPal refund, with its id and status read back from PayPal.");
+  clock.check("refunded");
+
+  // Scene 7: the audit log
   await page.goto("/activity");
-  await caption(page, "The audit log is hash-chained, so any edit is detectable.");
-  await titleCard(page, "PayPal Agent Kit", "Built with PayPal Orders, Payments and Agent Toolkit + Claude", 2800);
+  await page.getByTestId("audit-row").first().waitFor();
+  await caption(page, "Every decision is in a hash-chained audit log.");
+  await titleCard(page, "Pass or Refund", "Built with PayPal, Claude and Claude Code");
   clock.check("end");
-});
-
-test.afterEach(async ({ page }, info) => {
-  const video = page.video();
-  await page.close();
-  if (video) {
-    const name = `videos/demo-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
-    await video.saveAs(name);
-    console.log(`[demo] saved ${name} (${info.duration / 1000 | 0}s)`);
-  }
 });

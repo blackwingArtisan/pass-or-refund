@@ -56,7 +56,7 @@ function Lessons() {
 function Quiz({ attemptNumber, grading, onSubmit }: { attemptNumber: number; grading: boolean; onSubmit: (answers: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState(blankAnswers);
   return (
-    <Card>
+    <Card id="final-check">
       <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={`Four questions, 25 points each. Write in your own words. Pass mark ${course.passMark}.`} />
       <CardBody className="space-y-5">
         <div data-testid="sample-buttons" className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2">
@@ -140,7 +140,7 @@ function AfterFail({ enrollment, attempt }: { enrollment: EnrollmentView; attemp
   const counted = attempt.score >= MIN_POINTS_FOR_REFUND && everyQuestionAnswered(attempt.answers);
   return (
     <Notice tone="info" icon={<Clock className="size-4" />} testId="fail-count">
-      {counted ? `That's ${enrollment.completedFails} of ${FAILS_FOR_REFUND} completed attempts toward your refund.` : `This attempt doesn't count toward a refund, because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points.`} Work through your study list, then try again.
+      {counted ? `That's ${enrollment.completedFails} of ${FAILS_FOR_REFUND} completed attempts toward your refund.` : `This attempt doesn't count toward a refund, because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points.`} Work through your study list, then <a href="#final-check" className="font-medium text-brand underline">try again</a>.
     </Notice>
   );
 }

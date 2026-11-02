@@ -5,7 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
  * 1440x900 .webm and copies it to videos/. Mock PayPal unless PAYPAL_MODE=sandbox (or
  * DEMO_PAYPAL_MODE=sandbox); AI is mocked unless DEMO_AI_MODE=live.
  */
-const PORT = Number(process.env.DEMO_PORT ?? 3400);
+const PORT = Number(process.env.DEMO_PORT ?? 3420);
 const SIZE = { width: 1440, height: 900 };
 const PAYPAL_MODE = process.env.DEMO_PAYPAL_MODE ?? process.env.PAYPAL_MODE ?? "mock";
 // Sandbox has no reset route, so start clean here and fill the ledger with the shared seed data.
@@ -30,7 +30,7 @@ export default defineConfig({
     // Production build: no dev reloads or overlays in the recording.
     command: `${SANDBOX_SETUP}npx next build && npx next start --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 300_000,
     env: {
       PAYPAL_MODE,
