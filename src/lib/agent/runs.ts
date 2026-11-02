@@ -39,14 +39,14 @@ export function listRuns(channel?: string): AgentRun[] {
 }
 
 /** Registers a run without starting it. Pair with runAgentToCompletion() when code awaits the end of the run. */
-export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
+export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string; mode?: AgentRun["mode"] }): AgentRun {
   const run: AgentRun = {
     id: `run_${randomUUID().slice(0, 12)}`,
     agentId: def.id,
     agentName: def.name,
     channel: opts.channel,
     goal: input.goal,
-    mode: isAiLive() ? "claude" : def.mockScript ? "scripted" : "claude",
+    mode: opts.mode ?? (isAiLive() ? "claude" : def.mockScript ? "scripted" : "claude"),
     status: "running",
     startedAt: new Date().toISOString(),
     costUsd: 0,

@@ -9,7 +9,8 @@ import type { Rubric } from "@/lib/grading/frozen/score-items";
 export const rubric: Rubric = rubricJson;
 
 /** The only price in the app. Every demo amount comes from this constant. */
-export const COURSE_PRICE_CENTS = 4_900;
+/** The env value exists for one proof: it shows a refund PayPal can cover from the seller's balance reach COMPLETED. */
+export const COURSE_PRICE_CENTS = Number(process.env.NEXT_PUBLIC_COURSE_PRICE_CENTS) || 4_900;
 export const CURRENCY = "USD";
 
 export const course = {

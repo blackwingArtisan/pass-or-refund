@@ -57,6 +57,18 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
         </div>
       </div>
 
+      {attempt.settled ? (
+        <p data-testid="settled-note" className="rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+          A person on the course team went through this attempt and decided it {attempt.settled.outcome === "pass" ? "passes" : "doesn't pass"}. Their note: {attempt.settled.note}
+        </p>
+      ) : null}
+
+      {attempt.nearCopyOf !== undefined ? (
+        <p data-testid="near-copy" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This attempt is nearly the same as attempt {attempt.nearCopyOf}, so it counts as incomplete.
+        </p>
+      ) : null}
+
       {attempt.flagged ? (
         <p data-testid="flagged" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
           This attempt tried to instruct the grader, so that part earned nothing and the guarantee no longer applies.

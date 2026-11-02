@@ -4,7 +4,8 @@
  * isn't in AGENTS, so only lib/course/refund.ts can start it, after the policy says one is due.
  */
 import { appConfig } from "@/app.config";
-import { defineAgent, type AgentDefinition, type AgentInput } from "@/lib/agent/define";
+import { defineAgent, type AgentDefinition, type AgentInput, type ScriptStep } from "@/lib/agent/define";
+import { assertNoMockOutage } from "@/lib/ai/mock-outage";
 import { CHECK_REFUND_POLICY, checkRefundPolicy } from "./tools/check-refund-policy";
 import { REFUND_COURSE_PURCHASE, refundCoursePurchase } from "./tools/refund-course-purchase";
 
@@ -12,6 +13,21 @@ export const REFUND_AGENT_GOAL: AgentInput = { goal: "A learner has failed the f
 
 /** Short pauses: the steps show on the timeline, but a person shouldn't wait on them. */
 const PAUSE_MS = 250;
+
+const scores = (policy: { attempts: { score: number }[] }) => policy.attempts.map((a) => a.score).join(" and ");
+
+const proposal = (say: { checking: string; proposing: string }, closing: string[]): ScriptStep[] => [
+  { say: say.checking, tool: CHECK_REFUND_POLICY, as: "policy", pauseMs: PAUSE_MS },
+  {
+    say: say.proposing,
+    tool: REFUND_COURSE_PURCHASE,
+    input: (results) => ({
+      amount: results.policy.paid.value,
+      reasons: [`Two completed failing attempts, scoring ${scores(results.policy)}.`, "No attempt tried to instruct the grader.", "This is the learner's first refund for this course.", ...closing],
+    }),
+    pauseMs: PAUSE_MS,
+  },
+];
 
 export const refundAgent = (enrollmentId: string): AgentDefinition =>
   defineAgent({
@@ -29,16 +45,20 @@ ${REFUND_COURSE_PURCHASE} pauses until a person decides. If they decline, or a t
     policy: appConfig.agentPolicy,
     effort: "low",
     maxTurns: 5,
-    mockScript: () => [
-      { say: "Checking the guarantee policy for this enrollment.", tool: CHECK_REFUND_POLICY, as: "policy", pauseMs: PAUSE_MS },
-      {
-        say: "The policy says a refund is due. Proposing the amount PayPal says was paid, then waiting for a person.",
-        tool: REFUND_COURSE_PURCHASE,
-        input: (results) => ({
-          amount: results.policy.paid.value,
-          reasons: [`Two completed failing attempts, scoring ${results.policy.attempts.map((a: { score: number }) => a.score).join(" and ")}.`, "No attempt tried to instruct the grader.", "This is the learner's first refund for this course."],
-        }),
-        pauseMs: PAUSE_MS,
-      },
-    ],
+    mockScript: () => {
+      assertNoMockOutage();
+      return proposal({ checking: "Checking the guarantee policy for this enrollment.", proposing: "The policy says a refund is due. Proposing the amount PayPal says was paid, then waiting for a person." }, []);
+    },
   });
+
+/**
+ * What runs when the model can't. Same tools, same Guard, same person at the end, with reasons
+ * built by code from the policy check. The learner's refund doesn't depend on a model being up.
+ */
+export const refundWithoutAi = (enrollmentId: string): AgentDefinition => ({
+  ...refundAgent(enrollmentId),
+  id: "refund-without-ai",
+  name: "Refund check (no AI)",
+  description: "Builds the refund proposal in code when the AI agent can't run. A person still decides.",
+  mockScript: () => proposal({ checking: "The AI agent couldn't run, so code is checking the policy.", proposing: "The policy says a refund is due. Sending it to a person." }, ["The AI agent couldn't run, so code built this proposal from the policy check."]),
+});

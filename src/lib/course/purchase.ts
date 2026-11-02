@@ -7,8 +7,55 @@ import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import { course, COURSE_PRICE_CENTS, CURRENCY } from "./content";
-import { createEnrollment, requireEnrollment, saveEnrollment } from "./enrollments";
-import type { Enrollment } from "./types";
+import { createEnrollment, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
+import type { Enrollment, Payment } from "./types";
+import type { Order } from "@/lib/paypal/types";
+
+/** Abandoned checkouts pile up, so a returning learner only re-checks their latest few. */
+const CHECKOUTS_TO_RECHECK = 5;
+
+/** PayPal gives a wallet buyer a payer id. A guest card payment doesn't get one. */
+const payerIdOf = (order: Order) => order.payer?.payer_id ?? order.payment_source?.paypal?.account_id;
+
+function recordPayment(enrollment: Enrollment, payment: Payment): Enrollment {
+  return saveEnrollment({ ...enrollment, status: "active", payment });
+}
+
+/**
+ * PayPal took the money but our record never heard, because the app stopped in between. PayPal is
+ * the record, so this rebuilds ours from the order. Returns null when PayPal hasn't been paid.
+ */
+function fromCompletedOrder(enrollment: Enrollment, order: Order): Enrollment | null {
+  const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
+  if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED") return null;
+  const cents = toMinor(capture.amount.value, capture.amount.currency_code);
+  if (cents !== COURSE_PRICE_CENTS) return null;
+  return recordPayment(enrollment, { orderId: order.id, orderStatus: order.status, captureId: capture.id, captureStatus: capture.status, capturedCents: cents, paidAt: new Date().toISOString(), payerId: payerIdOf(order), recovered: true });
+}
+
+/** Called when anyone looks at an unpaid enrollment, so a reload is enough to get a learner unstuck. */
+export async function recoverPayment(enrollment: Enrollment): Promise<Enrollment> {
+  const orderId = enrollment.payment?.orderId;
+  if (enrollment.status !== "unpaid" || !orderId) return enrollment;
+  const order = await getPayPal().orders.get(orderId).catch(() => null);
+  return (order && fromCompletedOrder(enrollment, order)) ?? enrollment;
+}
+
+/**
+ * Before a new order: has this learner already paid, or said yes in PayPal, on a checkout we lost
+ * track of? Then they carry on with that one, and PayPal never sees a second payment.
+ */
+export async function resumePurchase(learnerEmail: string, channel: string): Promise<Enrollment | null> {
+  for (const enrollment of unpaidFor(learnerEmail).slice(0, CHECKOUTS_TO_RECHECK)) {
+    const orderId = enrollment.payment!.orderId;
+    const order = await getPayPal().orders.get(orderId).catch(() => null);
+    if (!order) continue;
+    const paid = fromCompletedOrder(enrollment, order);
+    if (paid) return paid;
+    if (order.status === "APPROVED") return completePurchase(enrollment.id, orderId, channel);
+  }
+  return null;
+}
 
 /** The amount comes from the course, never the browser. */
 export async function startPurchase(learnerName: string, learnerEmail: string): Promise<{ enrollment: Enrollment; orderId: string }> {
@@ -25,8 +72,10 @@ export async function startPurchase(learnerName: string, learnerEmail: string): 
 
 export async function completePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
   const enrollment = requireEnrollment(id);
-  if (enrollment.status !== "unpaid") throw new HttpError(409, "This course has already been paid for.", "conflict");
   if (enrollment.payment?.orderId !== orderId) throw new HttpError(409, "That PayPal order doesn't belong to this purchase.", "conflict");
+  if (enrollment.status !== "unpaid") return enrollment;
+  const recovered = await recoverPayment(enrollment);
+  if (recovered.status !== "unpaid") return recovered;
 
   const guard = new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy });
   const result = await runTool(captureCoursePayment, { order_id: orderId, idempotency_key: `capture-${id}` }, { runId: `purchase_${id}`, actor: "learner", channel, guard });
@@ -35,18 +84,15 @@ export async function completePurchase(id: string, orderId: string, channel: str
     const reason = outcome?.status === "denied" ? outcome.reason : outcome?.status === "failed" ? (outcome.error as Error).message : result.content;
     throw new HttpError(402, `The payment didn't go through: ${reason}`, "capture_failed");
   }
-  const capture = result.output as { order_status: string; capture_id: string; capture_status: string; amount: { currency_code: string; value: string } };
+  const capture = result.output as { order_status: string; capture_id: string; capture_status: string; amount: { currency_code: string; value: string }; payer_id?: string };
   if (capture.capture_status !== "COMPLETED") throw new HttpError(402, `PayPal shows this payment as ${capture.capture_status}, so the course isn't unlocked yet.`, "capture_failed");
-  return saveEnrollment({
-    ...enrollment,
-    status: "active",
-    payment: {
-      orderId,
-      orderStatus: capture.order_status,
-      captureId: capture.capture_id,
-      captureStatus: capture.capture_status,
-      capturedCents: toMinor(capture.amount.value, capture.amount.currency_code),
-      paidAt: new Date().toISOString(),
-    },
+  return recordPayment(enrollment, {
+    orderId,
+    orderStatus: capture.order_status,
+    captureId: capture.capture_id,
+    captureStatus: capture.capture_status,
+    capturedCents: toMinor(capture.amount.value, capture.amount.currency_code),
+    paidAt: new Date().toISOString(),
+    payerId: capture.payer_id,
   });
 }

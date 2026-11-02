@@ -34,6 +34,7 @@ export default defineConfig({
       DEMO_TEST_CARD: "1",
       KIT_DATA_DIR: ".data-sandbox",
       AI_RATE_LIMIT_PER_MINUTE: "120",
+      API_RATE_LIMIT_PER_MINUTE: "1000",
       NEXT_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SPONSOR_UI: process.env.NEXT_PUBLIC_SPONSOR_UI ?? "",
     },

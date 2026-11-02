@@ -7,7 +7,7 @@ import { getApprovals } from "@/lib/agent/approvals";
 import { getAuditLog } from "@/lib/agent/audit";
 import type { AgentDefinition, ScriptStep } from "@/lib/agent/define";
 import { createAgentRun, runAgentToCompletion } from "@/lib/agent/runs";
-import { markStudyListReviewed, submitAttempt } from "@/lib/course/attempts";
+import { skipAttemptGap, submitAttempt } from "@/lib/course/attempts";
 import { COURSE_PRICE_CENTS, rubric } from "@/lib/course/content";
 import { requireEnrollment, saveEnrollment, viewEnrollment, withSettledRefund } from "@/lib/course/enrollments";
 import { completePurchase, startPurchase } from "@/lib/course/purchase";
@@ -16,6 +16,7 @@ import { samples } from "@/lib/course/samples";
 import type { GradeRun } from "@/lib/course/types";
 import type { GradeOnce } from "@/lib/grading/grade";
 import { getMockPayPal, getPayPal } from "@/lib/paypal";
+import { readyForNextAttempt } from "./course-helpers";
 
 const CHANNEL = "test";
 const WAIT = { timeout: 5_000, interval: 25 };
@@ -32,7 +33,7 @@ async function buy(email = newEmail(), name = "Alex Rivera") {
 
 async function failOnce(id: string, sample: keyof typeof samples = "fail1") {
   await submitAttempt(id, samples[sample], CHANNEL);
-  markStudyListReviewed(id);
+  readyForNextAttempt(id);
 }
 
 async function failTwice(email?: string) {
@@ -138,11 +139,13 @@ describe("the refund agent proposes, then stops", () => {
     expect(await captureStatus(id)).toBe("COMPLETED");
   });
 
-  it("leaves a blocked state when the agent stops without proposing", async () => {
+  it("still reaches a person when the agent stops without proposing", async () => {
     const enrollment = await dueButNotStarted();
     const started = requestRefund(enrollment, CHANNEL, scripted(enrollment.id, [{ say: "I'd rather not.", pauseMs: 0 }]));
+    await approvalOf(enrollment.id);
+    expect(requireEnrollment(enrollment.id).refund?.proposedWithoutAi).toMatch(/without proposing/);
+    getApprovals().decide((await approvalOf(enrollment.id)).id, "denied", "test", "No");
     await started.finished;
-    expect(requireEnrollment(enrollment.id)).toMatchObject({ status: "refund_blocked", refund: { error: expect.stringContaining("without proposing") } });
   });
 });
 
@@ -165,11 +168,14 @@ describe("a refund can't exceed what was paid", () => {
     expect(await captureStatus(id)).toBe("COMPLETED");
   });
 
-  it("refuses an amount that isn't money", async () => {
+  it("refuses an amount that isn't money, and a person still gets the proper amount to decide on", async () => {
     const enrollment = await dueButNotStarted();
-    await requestRefund(enrollment, CHANNEL, scripted(enrollment.id, [asks("all of it")])).finished;
-    expect(requireEnrollment(enrollment.id).status).toBe("refund_blocked");
+    const started = requestRefund(enrollment, CHANNEL, scripted(enrollment.id, [asks("all of it")]));
+    const approval = await approvalOf(enrollment.id);
+    expect(approval.amountValue).toBe("49.00");
     expect(await captureStatus(enrollment.id)).toBe("COMPLETED");
+    getApprovals().decide(approval.id, "denied", "test", "No");
+    await started.finished;
   });
 
   it("after a refused ask, a proper run pays exactly what PayPal says was paid", async () => {
@@ -177,7 +183,7 @@ describe("a refund can't exceed what was paid", () => {
     const { id } = enrollment;
     await requestRefund(enrollment, CHANNEL, scripted(id, [asks("5000.00")])).finished;
 
-    retryRefund(id, CHANNEL);
+    await retryRefund(id, CHANNEL);
     getApprovals().decide((await approvalOf(id)).id, "approved", "test");
     await statusOf(id, "refunded");
 
@@ -254,13 +260,15 @@ describe("the policy is enforced by code, whatever the agent asks", () => {
   it("won't count a retake made without reviewing the study list", async () => {
     const { id } = await buy();
     await submitAttempt(id, samples.fail1, CHANNEL);
+    skipAttemptGap(id);
     const skipped = await submitAttempt(id, samples.fail2, CHANNEL);
     expect(skipped.status).toBe("active");
     expect(skipped.attempts[1].reviewedStudyList).toBe(false);
     expect(viewEnrollment(skipped).completedFails).toBe(1);
 
-    markStudyListReviewed(id);
-    const counted = await submitAttempt(id, samples.fail2, CHANNEL);
+    readyForNextAttempt(id);
+    const fresh = Object.fromEntries(rubric.questions.map((q) => [q.id, `A new answer for ${q.id} about something else entirely.`]));
+    const counted = await submitAttempt(id, fresh, CHANNEL, gradedAt(40));
     expect(counted.status).toBe("refund_pending");
     await approvalOf(id);
   });

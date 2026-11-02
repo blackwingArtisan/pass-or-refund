@@ -16,7 +16,9 @@ export type AuditAction =
   | "approval.requested"
   | "approval.approved"
   | "approval.denied"
-  | "approval.expired";
+  | "approval.expired"
+  | "review.settled"
+  | "attempt.wait_skipped";
 
 export interface AuditEntry {
   seq: number;

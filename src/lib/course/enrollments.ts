@@ -8,7 +8,7 @@ import type { PayPalApi } from "@/lib/paypal/api";
 import { singleton } from "@/lib/singleton";
 import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
-import { checkGuarantee, completedFails, guaranteeVoid, learnerKey } from "./policy";
+import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
 import type { Enrollment, EnrollmentStatus, EnrollmentView, GuaranteeDecision, PendingApproval } from "./types";
 
 const enrollments = () => collection<Enrollment>("enrollments");
@@ -52,6 +52,20 @@ export async function readBackRefund(id: string, paypal: PayPalApi): Promise<Enr
   });
 }
 
+/**
+ * PayPal paid a refund and our record never heard, because the app stopped in between. The order
+ * lists its refunds, so the record is rebuilt from PayPal and nothing is paid again.
+ */
+export async function recoverRefund(enrollment: Enrollment, paypal: PayPalApi): Promise<Enrollment> {
+  const { id, status, refund, payment } = enrollment;
+  if ((status !== "refund_pending" && status !== "refund_blocked") || refund?.refundId || !payment?.orderId || activeRefunds().has(id)) return enrollment;
+  const order = await paypal.orders.get(payment.orderId);
+  const paid = order.purchase_units?.[0]?.payments?.refunds?.[0];
+  if (!paid) return enrollment;
+  saveEnrollment({ ...enrollment, status: "refunded", refund: { ...refund!, error: undefined, refundId: paid.id, refundStatus: paid.status, refundedCents: toMinor(paid.amount.value, paid.amount.currency_code) } });
+  return readBackRefund(id, paypal);
+}
+
 const PENDING_REREAD_MS = 30_000;
 
 /** A PENDING refund settles on PayPal's side later, so a learner looking at it asks PayPal again. */
@@ -62,15 +76,23 @@ export async function withSettledRefund(enrollment: Enrollment): Promise<Enrollm
   return readBackRefund(enrollment.id, getPayPal()).catch(() => enrollment);
 }
 
+/** Unpaid checkouts this learner started, newest first. PayPal may already have paid one of them. */
+export function unpaidFor(learnerEmail: string): Enrollment[] {
+  const key = learnerKey(learnerEmail, course.slug);
+  return enrollments()
+    .list()
+    .filter((e) => e.status === "unpaid" && e.payment?.orderId && learnerKey(e.learnerEmail, e.courseSlug) === key)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 /** A blocked or declined refund moved no money, so it doesn't use up the learner's one refund. */
 const USES_THE_REFUND: EnrollmentStatus[] = ["refund_pending", "refunded"];
 
 /** The policy for this enrollment, including what the learner's other purchases of the course say. */
 export function guaranteeFor(enrollment: Enrollment): GuaranteeDecision {
-  const key = learnerKey(enrollment.learnerEmail, enrollment.courseSlug);
   const priorRefund = enrollments()
     .list()
-    .some((other) => other.id !== enrollment.id && USES_THE_REFUND.includes(other.status) && learnerKey(other.learnerEmail, other.courseSlug) === key);
+    .some((other) => other.id !== enrollment.id && USES_THE_REFUND.includes(other.status) && sameLearner(other, enrollment));
   return checkGuarantee(enrollment.attempts, priorRefund);
 }
 
@@ -86,7 +108,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
   if (enrollment.status === "refund_pending" && !activeRefunds().has(enrollment.id)) {
     enrollment = saveEnrollment({ ...enrollment, status: "refund_blocked", refund: { ...enrollment.refund!, error: "The approval was lost when the server restarted. Request it again." } });
   }
-  return { ...enrollment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment) };
+  return { ...enrollment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
 }
 
 export function listEnrollments(): EnrollmentView[] {

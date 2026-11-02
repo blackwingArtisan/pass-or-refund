@@ -9,7 +9,11 @@ import { useToast } from "@/components/toast";
 import { Card, CardBody, CardHeader, Field, Input } from "@/components/ui";
 import { course, COURSE_PRICE_CENTS, lessons, rubric } from "@/lib/course/content";
 import { formatCents } from "@/lib/course/policy";
+import type { EnrollmentView } from "@/lib/course/types";
 import { Guarantee } from "./guarantee";
+
+/** Stops the checkout quietly: this learner paid already, so they're on their way to the course. */
+class AlreadyPaid extends Error {}
 
 export function CourseScreen() {
   const { kitFetch } = useKit();
@@ -23,13 +27,22 @@ export function CourseScreen() {
   const ready = Boolean(name) && /^\S+@\S+\.\S+$/.test(email);
 
   async function createOrder() {
-    const created = await kitFetch<{ enrollmentId: string; orderId: string }>("/api/enrollments", { json: { learnerName: name, learnerEmail: email } });
+    const created = await kitFetch<{ enrollmentId: string; orderId?: string; alreadyPaid?: boolean }>("/api/enrollments", { json: { learnerName: name, learnerEmail: email } });
     enrollmentId.current = created.enrollmentId;
+    if (!created.orderId) {
+      router.push(`/learn/${created.enrollmentId}`);
+      throw new AlreadyPaid();
+    }
     return { orderId: created.orderId };
   }
 
+  /** If the answer got lost, PayPal may still have the money, so ask before saying anything failed. */
   async function onApprove({ orderId }: { orderId: string }) {
-    await kitFetch(`/api/enrollments/${enrollmentId.current}/pay`, { json: { orderId } });
+    const url = `/api/enrollments/${enrollmentId.current}`;
+    await kitFetch(`${url}/pay`, { json: { orderId } }).catch(async () => {
+      const enrollment = await kitFetch<EnrollmentView>(url).catch(() => null);
+      if (!enrollment || enrollment.status === "unpaid") throw new Error("We couldn't confirm your payment. Please don't pay again. Buy with the same email in a minute and we'll check with PayPal first.");
+    });
     router.push(`/learn/${enrollmentId.current}`);
   }
 
@@ -62,13 +75,15 @@ export function CourseScreen() {
             <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
               <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
             </Field>
-            <Field label="Your email" hint="The guarantee is one refund per learner per course, tracked by this address." htmlFor="learner-email">
+            <Field label="Your email" hint="The guarantee is one refund per learner per course, tracked by this address and your PayPal account." htmlFor="learner-email">
               <Input id="learner-email" data-testid="learner-email" type="email" value={learnerEmail} maxLength={200} onChange={(e) => setLearnerEmail(e.target.value)} placeholder="alex@example.com" />
             </Field>
             <CheckoutButton
               createOrder={createOrder}
               onApprove={onApprove}
-              onError={(e) => toast({ title: "The payment didn't go through", description: e.message, variant: "error" })}
+              onError={(e) => {
+                if (!(e instanceof AlreadyPaid)) toast({ title: "The payment didn't go through", description: e.message, variant: "error" });
+              }}
               amountLabel={formatCents(COURSE_PRICE_CENTS)}
               disabled={!ready}
               label={`Buy for ${formatCents(COURSE_PRICE_CENTS)}`}

@@ -36,6 +36,19 @@ export interface Attempt extends GradedAttempt {
   answers: Record<string, string>;
   /** The learner marked the study list from the attempt before as reviewed. */
   reviewedStudyList: boolean;
+  /** The earlier attempt this one nearly copies. It's graded, but it can't count toward a refund. */
+  nearCopyOf?: number;
+  /** A person decided a 69-70 attempt. `outcome` holds their decision, and the score stays as graded. */
+  settled?: ReviewDecision;
+}
+
+export interface ReviewDecision {
+  outcome: "pass" | "fail";
+  by: string;
+  at: string;
+  note: string;
+  /** The rubric items the person went through, one by one, before deciding. */
+  checkedItems: string[];
 }
 
 export interface Payment {
@@ -45,6 +58,10 @@ export interface Payment {
   captureStatus?: string;
   capturedCents?: number;
   paidAt?: string;
+  /** PayPal's id for the buyer's account. Guest card payments don't have one. */
+  payerId?: string;
+  /** PayPal had the money before our record did, and the record was rebuilt from PayPal. */
+  recovered?: boolean;
 }
 
 /** What the refund agent asked for. The amount that moves is computed from PayPal, not from this. */
@@ -70,6 +87,8 @@ export interface Refund {
   refundStatus?: string;
   /** PayPal's reason when the refund is PENDING. ECHECK: it is being paid from the seller's bank. */
   refundStatusReason?: string;
+  /** Set when code built the proposal because the AI agent couldn't. Says why. */
+  proposedWithoutAi?: string;
   refundedCents?: number;
   captureStatus?: string;
   rereadAt?: string;
@@ -87,6 +106,10 @@ export interface Enrollment {
   attempts: Attempt[];
   /** The attempt whose study list the learner marked as reviewed. */
   reviewedAttempt?: number;
+  /** Study list items ticked off so far, for the latest attempt. */
+  studyTicks?: string[];
+  /** The attempt after which the learner chose to skip the wait. */
+  gapSkippedAfter?: number;
   refund?: Refund;
 }
 
@@ -113,4 +136,6 @@ export interface EnrollmentView extends Enrollment {
   completedFails: number;
   guaranteeVoid: boolean;
   guarantee: GuaranteeDecision;
+  /** When the next attempt opens, or null if it's open now. */
+  nextAttemptAt: string | null;
 }

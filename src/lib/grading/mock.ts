@@ -5,6 +5,7 @@
  * lands on 69 and shows the human-review band.
  * Anything typed by hand scores partial on every answered item, which is a failing grade.
  */
+import { assertNoMockOutage } from "@/lib/ai/mock-outage";
 import { rubric } from "@/lib/course/content";
 import { sampleIdOf } from "@/lib/course/samples";
 import verdicts from "./mock-verdicts.json";
@@ -23,6 +24,7 @@ function typedByHand(answers: Answers): ChecklistGrade {
 }
 
 export function mockGrade(answers: Answers, run: number): ChecklistGrade {
+  assertNoMockOutage();
   const sample = sampleIdOf(answers);
   const recorded = sample ? RECORDED[sample] : undefined;
   return recorded?.[run % recorded.length] ?? typedByHand(answers);

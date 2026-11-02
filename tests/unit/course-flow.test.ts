@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getApprovals } from "@/lib/agent/approvals";
-import { markStudyListReviewed, submitAttempt } from "@/lib/course/attempts";
+import { submitAttempt } from "@/lib/course/attempts";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { requireEnrollment, viewEnrollment } from "@/lib/course/enrollments";
 import { completePurchase, startPurchase } from "@/lib/course/purchase";
@@ -8,6 +8,7 @@ import { retryRefund } from "@/lib/course/refund";
 import { samples } from "@/lib/course/samples";
 import { gradeAttempt } from "@/lib/grading/grade";
 import { getMockPayPal, getPayPal } from "@/lib/paypal";
+import { readyForNextAttempt } from "./course-helpers";
 
 const CHANNEL = "test";
 
@@ -32,7 +33,7 @@ const waitForStatus = (id: string, status: string) => vi.waitFor(() => expect(re
 
 async function failAndReview(id: string, sample: keyof typeof samples) {
   await submitAttempt(id, samples[sample], CHANNEL);
-  markStudyListReviewed(id);
+  readyForNextAttempt(id);
 }
 
 async function failTwice(email?: string) {
@@ -152,7 +153,7 @@ describe("refund", () => {
     expect(requireEnrollment(id).refund).toMatchObject({ declineNote: "Their answers look copied", declinedBy: "test" });
     expect(requireEnrollment(id).refund?.refundId).toBeUndefined();
 
-    retryRefund(id, CHANNEL);
+    await retryRefund(id, CHANNEL);
     getApprovals().decide((await waitForApproval(id)).id, "approved", "test");
     await waitForStatus(id, "refunded");
   });

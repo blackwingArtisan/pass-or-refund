@@ -27,7 +27,7 @@ export const checkRefundPolicy = (enrollmentId: string) =>
       return {
         eligible: due,
         rules: checks,
-        attempts: enrollment.attempts.map((a) => ({ number: a.number, score: a.score, outcome: a.outcome, complete: attemptComplete(a), reviewed_study_list: a.reviewedStudyList, flagged: a.flagged })),
+        attempts: enrollment.attempts.map((a) => ({ number: a.number, score: a.score, outcome: a.outcome, complete: attemptComplete(a), near_copy_of: a.nearCopyOf, reviewed_study_list: a.reviewedStudyList, flagged: a.flagged })),
         paid: capture.amount,
         capture_status: capture.status,
       };

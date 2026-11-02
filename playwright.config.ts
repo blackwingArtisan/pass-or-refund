@@ -33,6 +33,7 @@ export default defineConfig({
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",
       KIT_DATA_DIR: ".data-e2e",
       AI_RATE_LIMIT_PER_MINUTE: "120",
+      API_RATE_LIMIT_PER_MINUTE: "1000",
       MOCK_PAYPAL_LATENCY_MS: "60-160",
       NEXT_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SPONSOR_UI: process.env.NEXT_PUBLIC_SPONSOR_UI ?? "",

@@ -9,6 +9,7 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { col, DataGrid } from "@/components/data-grid";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, SkeletonCard, Stat } from "@/components/ui";
+import { usePhone } from "@/components/course/use-phone";
 import { formatUsd, type Cohort, type CourseSummary, type ItemSummary, type QuestionSummary, type RefundRow } from "@/lib/course/cohort";
 
 export interface CohortResponse extends Cohort {
@@ -65,6 +66,14 @@ const REFUND_COLUMNS: ColDef<RefundRow>[] = [
   col.text("reason", "Reason", { minWidth: 300, tooltipField: "reason" }),
 ];
 
+const WRAPPED_CELL = { lineHeight: "1.35", paddingTop: 10, paddingBottom: 10 };
+
+/** The columns that still read at phone width. The rest are a tap away on a bigger screen. */
+const onPhone = <T,>(columns: ColDef<T>[], keep: (keyof T & string)[], width: Partial<ColDef<T>> = {}): ColDef<T>[] =>
+  columns
+    .filter((column) => (keep as string[]).includes(String(column.field)))
+    .map((column, index) => ({ ...column, minWidth: 80, maxWidth: undefined, flex: 1, filter: false, suppressHeaderMenuButton: true, ...(index === 0 ? { wrapText: true, autoHeight: true, cellStyle: WRAPPED_CELL, ...width } : {}) }));
+
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
     <Card>
@@ -76,6 +85,11 @@ function Section({ title, description, children }: { title: string; description:
 
 /** The free view: every number in the dashboard, in the kit's plain AG Grid. */
 function CohortTables({ cohort }: { cohort: CohortResponse }) {
+  const phone = usePhone();
+  const items = phone ? onPhone(ITEM_COLUMNS, ["item", "missRate"], { flex: 3 }) : ITEM_COLUMNS;
+  const questions = phone ? onPhone(QUESTION_COLUMNS, ["question", "passRate"], { flex: 3 }) : QUESTION_COLUMNS;
+  const courses = phone ? onPhone(COURSE_COLUMNS, ["course", "passRate"], { flex: 3 }) : COURSE_COLUMNS;
+  const refunds = phone ? onPhone(REFUND_COLUMNS, ["state", "amountUsd", "paypalStatus"]) : REFUND_COLUMNS;
   return (
     <div className="space-y-6" data-testid="cohort-tables">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -91,16 +105,16 @@ function CohortTables({ cohort }: { cohort: CohortResponse }) {
         />
       </div>
       <Section title="Rubric items missed most" description="Partial and missed both count. The lesson is the one to fix first.">
-        <DataGrid<ItemSummary> rows={cohort.items} columns={ITEM_COLUMNS} getRowId={(r) => r.itemId} height={340} searchPlaceholder="Search rubric items…" pageSize={false} />
+        <DataGrid<ItemSummary> rows={cohort.items} columns={items} getRowId={(r) => r.itemId} height={phone ? 520 : 340} searchPlaceholder="Search rubric items…" pageSize={false} />
       </Section>
       <Section title="Pass rate by question" description="A question counts as cleared at 70% of its points, the same mark as the whole check.">
-        <DataGrid<QuestionSummary> rows={cohort.questions} columns={QUESTION_COLUMNS} getRowId={(r) => r.question} height={250} search={false} pageSize={false} />
+        <DataGrid<QuestionSummary> rows={cohort.questions} columns={questions} getRowId={(r) => r.question} height={phone ? 300 : 250} search={false} pageSize={false} />
       </Section>
       <Section title="Pass rate by course" description="Learners who took the final check.">
-        <DataGrid<CourseSummary> rows={cohort.courses} columns={COURSE_COLUMNS} getRowId={(r) => r.course} height={150} search={false} pageSize={false} />
+        <DataGrid<CourseSummary> rows={cohort.courses} columns={courses} getRowId={(r) => r.course} height={150} search={false} pageSize={false} />
       </Section>
       <Section title="Refunds" description="Amounts are what PayPal reported, not what we asked for.">
-        <DataGrid<RefundRow> rows={cohort.sources.refunds} columns={REFUND_COLUMNS} getRowId={(r) => r.id} height={300} search={false} pageSize={false} emptyMessage="No refund requests yet" />
+        <DataGrid<RefundRow> rows={cohort.sources.refunds} columns={refunds} getRowId={(r) => r.id} height={300} search={false} pageSize={false} emptyMessage="No refund requests yet" />
       </Section>
     </div>
   );

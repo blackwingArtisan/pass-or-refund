@@ -12,7 +12,7 @@ import { singleton } from "../singleton";
 import { getBudget } from "./budget";
 import { modelLabel, SERVER_FALLBACK } from "./config";
 import { actualCostUsd, estimateInputTokens, worstCaseCostUsd } from "./cost";
-import { AiRefusalError, AiUnavailableError } from "./errors";
+import { AiCreditError, AiRefusalError, AiUnavailableError } from "./errors";
 
 export type BetaCreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -89,9 +89,13 @@ export async function guardedClaudeCall<M extends BetaMessage>(
   } catch (error) {
     if (!settled) budget.release(reservation);
     step.fail(error);
+    if (isCreditRefusal(error)) throw new AiCreditError();
     throw error;
   }
 }
+
+/** Anthropic sends this as a plain bad request, so its message is the only way to tell. */
+export const isCreditRefusal = (error: unknown) => error instanceof Anthropic.APIError && /credit balance/i.test(error.message);
 
 /** Emits a timeline step for a mocked AI call so demos still show "AI did something". */
 export function recordMockAiCall(feature: string, detail = "AI mock mode: returned the fixture") {

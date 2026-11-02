@@ -48,6 +48,7 @@ next-env.d.ts
 videos/*.webm
 videos/*.mp4
 test-results/
+test-results-*/
 playwright-report/
 screenshots/
 .env.shared

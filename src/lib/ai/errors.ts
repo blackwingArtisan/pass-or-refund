@@ -20,6 +20,18 @@ export class AiBudgetExceededError extends Error {
   }
 }
 
+/** Anthropic refused the call because the account is out of credit. */
+export class AiCreditError extends Error {
+  readonly status = 402;
+  constructor() {
+    super("The Anthropic account is out of credit.");
+    this.name = "AiCreditError";
+  }
+}
+
+/** The account's money has run out, today's cap or the credit itself. It won't fix itself on a retry. */
+export const isOutOfAiCredit = (error: unknown) => error instanceof AiBudgetExceededError || error instanceof AiCreditError;
+
 export class AiRefusalError extends Error {
   readonly status = 422;
   constructor(

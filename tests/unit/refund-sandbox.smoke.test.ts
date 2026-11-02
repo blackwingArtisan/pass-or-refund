@@ -72,7 +72,7 @@ describe.skipIf(!creds)("refund cap on the real sandbox", () => {
     expect(direct.status).toBe(422);
     refundCapture.mockClear();
 
-    const retried = retryRefund(enrollment.id, "test");
+    const retried = await retryRefund(enrollment.id, "test");
     const approval = await vi.waitFor(() => {
       const pending = viewEnrollment(requireEnrollment(enrollment.id)).approval;
       if (!pending) throw new Error("No approval yet");

@@ -14,13 +14,13 @@ People don't trust online courses, because a guarantee usually means small print
 - **Take the final check.** Four written questions, 25 points each, on a short sample course, *Sharp at Home* by a made-up creator.
 - **See your grade point by point.** Every rubric item shows met, partial or missed, with the words quoted from your answer. Missed items become your study list.
 - **Pass:** you get a certificate, and no refund happens.
-- **Fail once:** you get the study list and a second attempt.
+- **Fail once:** you tick off the study list item by item, and your next attempt opens 24 hours later. Judges can press **Skip the wait (demo)** to fail twice right away.
 - **Fail twice:** a refund agent checks the policy, proposes the refund with its reasons, and stops. After a person on the course team approves, PayPal pays it and you see "Refund issued, sorry we let you down", with the refund id and status read back from PayPal.
 - **A person declines:** no money moves, and you read the decision and their note on your page.
-- **A score of 69 or 70:** you see "under review, answer within one business day", and no refund starts.
+- **A score of 69 or 70:** you see "under review, answer within one business day", and no refund starts. On `/team` a person goes through every item that lost points, one tick each, adds a note and decides. Your score stays as graded, and a fail counts like any other, so a second one sends the refund to the same approval.
 - **Course creators** see `/cohort`: pass rate by course and question, refunds, and the rubric items learners miss most, so they know which lesson to fix.
 
-**The refund rule, enforced in code (`src/lib/course/policy.ts`).** It takes two completed failing attempts: every question answered and at least 25 points each time. The learner must mark the first attempt's study list as reviewed before the second one counts. Trying to instruct the grader gets no credit, is flagged and voids the guarantee. Each learner gets one refund per course, matched on the email typed at checkout (a declined or blocked refund doesn't use it up).
+**The refund rule, enforced in code (`src/lib/course/policy.ts`).** It takes two completed failing attempts: every question answered, at least 25 points each time, and not a near-copy of an earlier attempt (90% of the same words, in any order). The learner must tick off the first attempt's study list before the second one counts. Trying to instruct the grader gets no credit, is flagged and voids the guarantee. Each learner gets one refund per course, matched on the email typed at checkout or the PayPal account that paid (a declined or blocked refund doesn't use it up). Guest card payments have no PayPal account, so those match on email alone.
 
 ## How PayPal is used
 
@@ -36,7 +36,9 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 **Safety around money:** both money steps (`capture_course_payment`, `refund_course_purchase`) are guarded tools. The Guard enforces a per-action cap, a daily cap and idempotency (`PayPal-Request-Id`). A refund always waits for a person, whatever the amount. The agent can only ask: the tool re-checks the policy and the PayPal capture before the approval and again before paying, and refuses any amount that isn't exactly what was paid, so a request for too much stops the refund with no PayPal call. Every decision goes to a hash-chained, append-only audit log, shown on `/activity`.
 
-**Refunds that show PENDING.** PayPal can report a refund as `PENDING` while it pays it out of the seller's bank (status reason `ECHECK`). The app shows that status as PayPal reports it, tells the learner, and asks PayPal again when they look.
+**Refunds that show PENDING.** PayPal pays a refund from the seller's PayPal balance. When the balance is smaller than the refund, PayPal draws on the seller's bank instead, and the refund stays `PENDING` with status reason `ECHECK`, even though the capture already reads `REFUNDED`. The shared sandbox seller holds less than the $49 price, and on a test account those refunds don't settle by themselves. Test captures don't top the balance up: after 20 minutes $116.40 of captured money still hadn't funded a $30 refund. The app shows the status as PayPal reports it, tells the learner why in plain words, and asks PayPal again when they look. A refund the balance covers goes straight to `COMPLETED`, which a funded seller account gives on every refund.
+
+**If the app stops halfway.** PayPal is the record of the money. If PayPal took a payment and our record never heard, opening the learner's page, or buying again with the same email, rebuilds the enrollment from the order, so nobody is stuck and nobody pays twice. The same goes for a refund: its order lists it, so the app records that refund and doesn't send another.
 
 ## How AI is used
 
@@ -49,6 +51,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 - **The method is sealed.** Prompts, rules and scoring in `src/lib/grading/frozen/` are byte copies of the set tested on held-out data. A unit test checks their hashes.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap and per-IP rate limits. A real grade costs about $0.014.
+- **When the model is out:** a due refund still reaches a person. Code builds the proposal from the policy check, through the same tools and Guard, and the card says so. Grading can't be replaced by code, so the learner sees why it stopped, keeps their answers and loses nothing. Running out of AI credit gets its own message.
 - **Mock mode**: without an API key the app replays recorded verdicts for the demo answers, clearly labelled, so the demo works anywhere.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.
@@ -81,7 +84,9 @@ PAYPAL_MODE=mock AI_MODE=mock npm run dev      # no credentials needed
 
 Open http://localhost:3020, go to **Course**, buy it, then use the demo answer buttons above the quiz. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and `DEMO_TEST_CARD=1`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build, and proof that no sponsor code is in the build), `npm run test:e2e` (mock PayPal), `npm run test:e2e:sandbox` (real sandbox), `npm run test:sandbox`. Set `E2E_BASE_URL` to run the sandbox flows against a deployed copy.
+Checks: `npm run check` (lint, typecheck, unit tests, build, and proof that no sponsor code is in the build), `npm run test:e2e` (mock PayPal), `ENGINE=webkit npm run test:e2e:engines` (also `firefox`, `iphone`, `android`), `npm run test:e2e:sandbox` (real sandbox), `npm run test:sandbox`. Set `E2E_BASE_URL` to run the sandbox flows against a deployed copy.
+
+`npm run demo:record` builds the app, plays the whole story on mock PayPal and saves `videos/demo-pass-or-refund.webm`.
 
 ## The cohort dashboard
 
@@ -110,12 +115,11 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - Sandbox only; no live payments are possible.
 - Automated sandbox tests pay with PayPal's test card, and the mock flow uses the simulated approval.
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
-- `/team` has no login, so anyone who can open the demo can approve a refund. Fine in sandbox, not for production.
-- A score in the review band stops at "under review". There's no screen yet for a person to settle it.
-- Not built yet: a gap between attempts, near-copy detection, and a cap on attempts.
-- Learner identity is the email typed at checkout, so a new address gets past one refund per learner. PayPal's payer id isn't used yet.
-- A proposal waiting for a person lasts an hour and dies if the server restarts. The refund then shows as blocked and the team can review it again. The same applies if the model is unavailable.
-- If the app stops between PayPal paying a refund and our record of it, the enrollment stays blocked. PayPal refuses a second refund, so no money is paid twice.
+- `/team` is open to anyone on purpose, and the page says so: judges need to approve a refund without an account, and only sandbox money can move. A real deployment would put it behind a staff login.
+- There's no cap on the number of attempts.
+- A guest card buyer with a new email gets past one refund per learner, because a card payment gives us no PayPal account to match. Matching the card itself would merge everyone who uses the shared test card. Wallet buyers are matched on their payer id, which only the mock suite proves, because a sandbox wallet buyer needs a login.
+- A proposal waiting for a person lasts an hour and dies if the server restarts. The refund then shows as blocked and the team can review it again.
+- Recovery needs our enrollment record, so it can't rebuild data lost in a redeploy (see local JSON storage above).
 - The real PayPal wallet popup is untested, because it needs a sandbox buyer login. Tests pay with the test card.
 
 ## License

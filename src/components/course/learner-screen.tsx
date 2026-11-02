@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Award, BookOpenCheck, CircleAlert, Clock, Send, ShieldCheck } from "lucide-react";
+import { Award, BookOpenCheck, CircleAlert, Clock, Send, ShieldCheck, TimerReset } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
+import type { ApiError } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
-import { course, lessons, rubric } from "@/lib/course/content";
-import { attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND } from "@/lib/course/policy";
+import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
+import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
@@ -23,6 +24,9 @@ const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
   { id: "borderline", label: "Borderline answers" },
   { id: "inject", label: "Try to trick the grader" },
 ];
+
+/** 402 and 503: the grader is out of credit or down. They stay on screen beside the answers. */
+const GRADER_OUTAGES = [402, 503];
 
 const blankAnswers = () => Object.fromEntries(rubric.questions.map((q) => [q.id, ""]));
 
@@ -53,7 +57,7 @@ function Lessons() {
   );
 }
 
-function Quiz({ attemptNumber, grading, onSubmit }: { attemptNumber: number; grading: boolean; onSubmit: (answers: Record<string, string>) => void }) {
+function Quiz({ attemptNumber, grading, problem, onSubmit }: { attemptNumber: number; grading: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState(blankAnswers);
   return (
     <Card id="final-check">
@@ -81,9 +85,35 @@ function Quiz({ attemptNumber, grading, onSubmit }: { attemptNumber: number; gra
           </Field>
         ))}
         {everyQuestionAnswered(answers) ? null : <p className="text-sm text-zinc-500">An attempt with a blank answer can&rsquo;t count toward a refund.</p>}
+        {problem ? (
+          <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="grading-unavailable">
+            {problem}
+          </Notice>
+        ) : null}
         <Button icon={<Send className="size-4" />} loading={grading} onClick={() => onSubmit(answers)} data-testid="submit-attempt">
           {grading ? "Grading your answers" : "Submit for grading"}
         </Button>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Stands in for the final check during the wait. The skip is here so judges can fail twice right away. */
+function NextAttempt({ opensAt, attemptNumber, onSkip }: { opensAt: string; attemptNumber: number; onSkip: () => void }) {
+  const when = new Date(opensAt).toLocaleString("en-US", { weekday: "long", hour: "numeric", minute: "2-digit" });
+  return (
+    <Card id="final-check" data-testid="attempt-gap">
+      <CardHeader title={`Final check, attempt ${attemptNumber}`} description={`Attempts are ${ATTEMPT_GAP_HOURS} hours apart, so there's time to work through your study list.`} />
+      <CardBody className="space-y-3">
+        <p className="flex items-center gap-2 font-medium text-zinc-900">
+          <Clock className="size-4 text-zinc-500" /> Your next attempt opens <span data-testid="next-attempt-at">{when}</span>.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-zinc-50 px-3 py-2">
+          <Button size="sm" variant="secondary" icon={<TimerReset className="size-4" />} onClick={onSkip} data-testid="skip-wait">
+            Skip the wait (demo)
+          </Button>
+          <p className="text-xs text-zinc-500">Here so judges can try a second attempt right now. A real course wouldn&rsquo;t have this button.</p>
+        </div>
       </CardBody>
     </Card>
   );
@@ -131,7 +161,14 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
       </dl>
       {refund.refundStatus === "PENDING" ? (
         <p data-testid="refund-pending-note" className="mt-4 text-sm text-zinc-600">
-          PayPal has accepted this refund and is still paying it out{refund.refundStatusReason === "ECHECK" ? " from the seller's bank" : ""}. That can take a few days. This page updates when it settles.
+          {refund.refundStatusReason === "ECHECK" ? (
+            <>
+              PayPal has accepted this refund, but the money hasn&rsquo;t reached the buyer yet. The seller&rsquo;s PayPal balance is smaller than the refund, so PayPal is drawing it from the seller&rsquo;s bank, which it calls ECHECK. That takes days, and on a sandbox test account it may stay PENDING.
+            </>
+          ) : (
+            <>PayPal has accepted this refund and is still paying it out. That can take a few days.</>
+          )}{" "}
+          This page updates when it settles.
         </p>
       ) : null}
       <p className="mt-4 text-xs text-zinc-500">Read back from PayPal after the refund{refund.rereadAt ? ` at ${new Date(refund.rereadAt).toLocaleTimeString("en-US")}` : ""}.</p>
@@ -139,27 +176,55 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
   );
 }
 
-/** What happens next, in one line, after a failed attempt. */
-function AfterFail({ enrollment, attempt, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onReviewed: () => void }) {
+/** The study list, one tick per missed item. The button only opens once each one is done. */
+function StudyChecklist({ enrollment, attempt, onTick, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onTick: (itemId: string) => void; onReviewed: () => void }) {
+  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, item.text])));
+  const missed = missedItems(attempt);
+  const ticked = enrollment.studyTicks ?? [];
+  const left = missed.filter((item) => !ticked.includes(item.id)).length;
+  return (
+    <div className="mt-3 space-y-2">
+      <ul className="space-y-1.5">
+        {missed.map((item) => {
+          const lesson = lessons.find((l) => l.number === lessonForItem[item.id]);
+          return (
+            <li key={item.id}>
+              <label className="flex items-start gap-2">
+                <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-brand" checked={ticked.includes(item.id)} onChange={() => onTick(item.id)} disabled={ticked.includes(item.id)} data-testid={`study-item-${item.id}`} />
+                <span>
+                  {itemText[item.id]}. {lesson ? <a href={`#lesson-${lesson.number}`} className="font-medium text-brand hover:underline">Lesson {lesson.number}</a> : null}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <Button size="sm" variant="secondary" icon={<BookOpenCheck className="size-4" />} onClick={onReviewed} disabled={left > 0} data-testid="mark-reviewed">
+        I&rsquo;ve reviewed my study list
+      </Button>
+      {left > 0 ? <p className="text-xs text-zinc-500">{left} left to tick off.</p> : null}
+    </div>
+  );
+}
+
+/** What happens next after a failed attempt, then the study list to work through. */
+function AfterFail({ enrollment, attempt, onTick, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onTick: (itemId: string) => void; onReviewed: () => void }) {
   const prior = enrollment.guarantee.checks.find((c) => c.rule === "one_refund_per_learner");
   if (enrollment.guaranteeVoid) return <Notice tone="error" icon={<CircleAlert className="size-4" />}>The guarantee no longer applies, because an attempt tried to instruct the grader. You can still study and try again.</Notice>;
   if (prior && !prior.passed) return <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="prior-refund">This purchase isn&rsquo;t covered by the guarantee, because it allows one refund per learner per course and you&rsquo;ve had yours. You can still study and try again.</Notice>;
-  const why = attemptComplete(attempt) ? "because you hadn't marked your study list as reviewed" : `because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points`;
+  const incomplete = attempt.nearCopyOf !== undefined ? `because it's nearly the same as attempt ${attempt.nearCopyOf}` : `because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points`;
+  const why = attemptComplete(attempt) ? "because you hadn't marked your study list as reviewed" : incomplete;
   const reviewed = enrollment.reviewedAttempt === attempt.number;
   return (
     <Notice tone="info" icon={<Clock className="size-4" />} testId="fail-count">
       {countsTowardRefund(attempt) ? `That's ${enrollment.completedFails} of ${FAILS_FOR_REFUND} completed attempts toward your refund.` : `This attempt doesn't count toward a refund, ${why}.`} Work through your study list, then <a href="#final-check" className="font-medium text-brand underline">try again</a>.
-      <div className="mt-2">
-        {reviewed ? (
-          <p data-testid="study-list-reviewed" className="flex items-center gap-1.5 font-medium text-zinc-900">
-            <BookOpenCheck className="size-4" /> Study list reviewed
-          </p>
-        ) : (
-          <Button size="sm" variant="secondary" icon={<BookOpenCheck className="size-4" />} onClick={onReviewed} data-testid="mark-reviewed">
-            I&rsquo;ve reviewed my study list
-          </Button>
-        )}
-      </div>
+      {reviewed ? (
+        <p data-testid="study-list-reviewed" className="mt-2 flex items-center gap-1.5 font-medium text-zinc-900">
+          <BookOpenCheck className="size-4" /> Study list reviewed
+        </p>
+      ) : (
+        <StudyChecklist enrollment={enrollment} attempt={attempt} onTick={onTick} onReviewed={onReviewed} />
+      )}
     </Notice>
   );
 }
@@ -171,9 +236,10 @@ export function LearnerScreen({ id }: { id: string }) {
   const [enrollment, setEnrollment] = useState<EnrollmentView | null>(null);
   const [missing, setMissing] = useState(false);
   const [grading, setGrading] = useState(false);
+  const [gradingProblem, setGradingProblem] = useState<string | null>(null);
   const url = `/api/enrollments/${id}`;
   const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
-  const waiting = enrollment?.status === "refund_pending" || enrollment?.refund?.refundStatus === "PENDING";
+  const waiting = enrollment?.status === "refund_pending" || enrollment?.status === "under_review" || enrollment?.refund?.refundStatus === "PENDING";
 
   useEffect(() => {
     let live = true;
@@ -193,18 +259,20 @@ export function LearnerScreen({ id }: { id: string }) {
 
   async function submit(answers: Record<string, string>) {
     setGrading(true);
+    setGradingProblem(null);
     try {
       setEnrollment(await kitFetch<EnrollmentView>(`${url}/attempts`, { json: { answers } }));
     } catch (e) {
-      toast({ title: "Your attempt wasn't graded", description: (e as Error).message, variant: "error" });
+      if (GRADER_OUTAGES.includes((e as ApiError).status)) setGradingProblem((e as Error).message);
+      else toast({ title: "Your attempt wasn't graded", description: (e as Error).message, variant: "error" });
     } finally {
       setGrading(false);
     }
   }
 
-  async function markReviewed() {
+  async function update(path: string, json: object) {
     try {
-      setEnrollment(await kitFetch<EnrollmentView>(`${url}/review`, { method: "POST" }));
+      setEnrollment(await kitFetch<EnrollmentView>(`${url}/${path}`, { json }));
     } catch (e) {
       toast({ title: "That didn't save", description: (e as Error).message, variant: "error" });
     }
@@ -224,6 +292,16 @@ export function LearnerScreen({ id }: { id: string }) {
       <PageHeader eyebrow={`Welcome, ${enrollment.learnerName}`} title={course.title} description={enrollment.payment?.capturedCents === undefined ? undefined : `${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`} />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
+          {enrollment.status === "unpaid" ? (
+            <Notice tone="info" icon={<Clock className="size-4" />} testId="purchase-unfinished">
+              <strong>This purchase didn&rsquo;t finish.</strong> PayPal hasn&rsquo;t taken any money. <Link href="/course" className="font-medium text-brand underline">Back to the course</Link> to try again with the same email.
+            </Notice>
+          ) : null}
+          {enrollment.payment?.recovered ? (
+            <Notice tone="info" icon={<ShieldCheck className="size-4" />} testId="payment-recovered">
+              <strong>You&rsquo;re all set.</strong> PayPal took your payment but our app stopped before saving it, so we rebuilt your enrollment from PayPal. You paid once.
+            </Notice>
+          ) : null}
           {enrollment.status === "refunded" ? <RefundIssued enrollment={enrollment} /> : null}
           {enrollment.status === "passed" && latest ? <Certificate learnerName={enrollment.learnerName} attempt={latest} /> : null}
           {enrollment.status === "under_review" ? (
@@ -249,7 +327,7 @@ export function LearnerScreen({ id }: { id: string }) {
 
           {canAttempt && latest?.outcome === "fail" ? (
             <>
-              <AfterFail enrollment={enrollment} attempt={latest} onReviewed={markReviewed} />
+              <AfterFail enrollment={enrollment} attempt={latest} onTick={(item) => update("review", { item })} onReviewed={() => update("review", {})} />
               <Guarantee />
             </>
           ) : null}
@@ -266,7 +344,8 @@ export function LearnerScreen({ id }: { id: string }) {
           ) : null}
 
           {canAttempt ? <Lessons /> : null}
-          {canAttempt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} onSubmit={submit} /> : null}
+          {canAttempt && enrollment.nextAttemptAt ? <NextAttempt opensAt={enrollment.nextAttemptAt} attemptNumber={enrollment.attempts.length + 1} onSkip={() => update("skip-wait", {})} /> : null}
+          {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} problem={gradingProblem} onSubmit={submit} /> : null}
         </div>
         <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
           <ToolCallTimeline steps={timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and guarded steps show up here as they happen." />

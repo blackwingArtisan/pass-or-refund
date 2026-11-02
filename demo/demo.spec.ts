@@ -35,8 +35,15 @@ test("demo", async ({ page, request }) => {
   await page.getByTestId("attempt-1").scrollIntoViewIfNeeded();
   await caption(page, "Claude marks every rubric item and quotes the answer. Code adds up the score.");
   await page.getByTestId("study-list").scrollIntoViewIfNeeded();
-  await caption(page, "What was missed becomes the study list. One more try.");
+  await caption(page, "What was missed becomes the study list.");
+  await page.getByTestId("fail-count").scrollIntoViewIfNeeded();
+  for (const item of await page.locator('[data-testid^="study-item-"]').all()) await item.click();
+  await caption(page, "The learner ticks off each item before the next attempt counts.");
   await page.getByTestId("mark-reviewed").click();
+  await page.getByTestId("skip-wait").scrollIntoViewIfNeeded();
+  await highlight(page, page.getByTestId("attempt-gap"));
+  await caption(page, "Attempts are a day apart, so there's time to study. Judges can skip the wait.");
+  await page.getByTestId("skip-wait").click();
   clock.check("first fail");
 
   // Scene 4: second fail
@@ -66,6 +73,20 @@ test("demo", async ({ page, request }) => {
   await page.goto("/activity");
   await page.getByTestId("audit-row").first().waitFor();
   await caption(page, "Every decision is in a hash-chained audit log.");
+  clock.check("audit");
+
+  // Scene 8: what the creator learns
+  if (!sandbox) await request.post("/api/dev/seed");
+  await page.goto("/cohort");
+  await page.getByTestId("cohort-fix-first").waitFor();
+  await highlight(page, page.getByTestId("cohort-fix-first"));
+  await caption(page, "The creator sees what learners miss most, and which lesson to fix first.");
+  await page.mouse.wheel(0, 500);
+  await caption(page, "No names or emails here. Just the rubric, the results and the refunds.");
   await titleCard(page, "Pass or Refund", "Built with PayPal, Claude and Claude Code");
   clock.check("end");
+
+  const video = page.video();
+  await page.close();
+  await video?.saveAs("videos/demo-pass-or-refund.webm");
 });

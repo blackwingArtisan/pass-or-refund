@@ -9,7 +9,7 @@ interface Amount {
 }
 
 export interface PayPalObjects {
-  order: { id: string; status: string; intent: string; purchase_units: { amount: Amount; custom_id?: string; payments: { captures: { id: string; status: string; amount: Amount }[] } }[] };
+  order: { id: string; status: string; intent: string; purchase_units: { amount: Amount; custom_id?: string; payments: { captures: { id: string; status: string; amount: Amount }[]; refunds?: { id: string; status: string }[] } }[] };
   capture: { id: string; status: string; amount: Amount };
   refund?: { id: string; status: string; status_details?: { reason: string }; amount: Amount };
 }
@@ -35,4 +35,20 @@ export async function readPayPalObjects(orderId: string, captureId: string, refu
     capture: await read(`/v2/payments/captures/${captureId}`, bearer),
     refund: refundId ? await read(`/v2/payments/refunds/${refundId}`, bearer) : undefined,
   };
+}
+
+async function send<T>(path: string, body: object): Promise<T> {
+  const res = await fetch(`${API}${path}`, { method: "POST", headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** PayPal takes the money and the app doesn't hear, which is what's left when the app stops halfway. */
+export const captureBehindTheApp = (orderId: string) => send(`/v2/checkout/orders/${orderId}/capture`, {});
+
+/** PayPal pays the refund and the app doesn't hear. */
+export const refundBehindTheApp = (captureId: string) => send(`/v2/payments/captures/${captureId}/refund`, {});
+
+export async function readRefunds(orderId: string) {
+  return (await read<PayPalObjects["order"]>(`/v2/checkout/orders/${orderId}`, await token())).purchase_units[0].payments.refunds ?? [];
 }

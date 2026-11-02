@@ -666,7 +666,7 @@ export class MockPayPal implements PayPalApi {
   }
 
   /** Dev helper: what the buyer does in the PayPal popup. CREATED/PAYER_ACTION_REQUIRED -> APPROVED. */
-  simulateBuyerApproval(orderId: string, buyer?: { email?: string; givenName?: string; surname?: string }): Promise<T.Order> {
+  simulateBuyerApproval(orderId: string, buyer?: { email?: string; givenName?: string; surname?: string; payerId?: string }): Promise<T.Order> {
     return this.io("dev.approveOrder", undefined, () => {
       const rec = this.state.orders[orderId];
       if (!rec) throw notFound("order", orderId);
@@ -674,7 +674,7 @@ export class MockPayPal implements PayPalApi {
         throw unprocessable("ORDER_NOT_APPROVABLE", `Order is ${rec.order.status}; only CREATED or PAYER_ACTION_REQUIRED orders can be approved.`);
       }
       const b = { ...this.opts.defaultBuyer, ...buyer };
-      const payerId = mockIds.payer();
+      const payerId = buyer?.payerId ?? mockIds.payer();
       rec.order.payer = { payer_id: payerId, email_address: b.email, name: { given_name: b.givenName, surname: b.surname }, address: { country_code: "US" } };
       rec.order.payment_source = {
         paypal: {

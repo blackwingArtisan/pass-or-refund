@@ -37,6 +37,6 @@ export const captureCoursePayment = defineTool({
     const order = await ctx.paypal.orders.capture(i.order_id, { requestId: ctx.requestId });
     const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
     if (!capture) throw new HttpError(402, `PayPal returned no capture (order ${order.status}).`, "capture_failed");
-    return { order_id: order.id, order_status: order.status, capture_id: capture.id, capture_status: capture.status, amount: capture.amount };
+    return { order_id: order.id, order_status: order.status, capture_id: capture.id, capture_status: capture.status, amount: capture.amount, payer_id: order.payer?.payer_id ?? order.payment_source?.paypal?.account_id };
   },
 });
