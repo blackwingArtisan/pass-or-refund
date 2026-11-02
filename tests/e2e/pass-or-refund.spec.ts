@@ -6,11 +6,14 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
+import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
 import { readPayPalObjects } from "./paypal-reread";
 
 const PRICE = fromMinor(COURSE_PRICE_CENTS, "USD");
 const LIVE_AI = process.env.E2E_AI_MODE === "live";
+/** Read at build time, so this has to match the build under test. Never set on the hosted site. */
+const SPONSOR_UI = process.env.NEXT_PUBLIC_SPONSOR_UI === "1";
 
 const mode = async (request: APIRequestContext) => (await (await request.get("/api/kit/status")).json()).paypal.mode as "mock" | "sandbox";
 
@@ -64,8 +67,88 @@ async function approveOnTeam(page: Page, id: string) {
 
 const enrollmentOf = async (request: APIRequestContext, id: string) => (await (await request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
 
+const cohortOf = async (request: APIRequestContext) => (await (await request.get("/api/team/cohort")).json()) as Cohort;
+
+/** Every script and stylesheet the page loads, so a test can read exactly what reached the browser. */
+function watchCode(page: Page) {
+  const bodies: Promise<string>[] = [];
+  page.on("response", (response) => {
+    if (["script", "stylesheet"].includes(response.request().resourceType())) bodies.push(response.text().catch(() => ""));
+  });
+  return async () => (await Promise.all(bodies)).join("\n");
+}
+
 test.describe("mock-safe flows", () => {
   test.skip(LIVE_AI, "These flows use mock AI. The paid run is the real AI test.");
+
+  test("cohort results: real attempts show what to fix", async ({ page, request }) => {
+    const before = await cohortOf(request);
+    if (before.sources.attempts.length === 0) {
+      await page.goto("/cohort");
+      await expect(page.getByText("No results yet")).toBeVisible();
+    }
+
+    await buy(page, request, "Noor Haddad");
+    await attempt(page, "fail1", 1);
+    const after = await cohortOf(request);
+    expect(after.sources.attempts).toHaveLength(before.sources.attempts.length + 1);
+    expect(after.sources.items.length).toBeGreaterThan(before.sources.items.length);
+    const worst = after.items[0];
+    expect(worst.missRate).toBeGreaterThan(0);
+
+    const code = watchCode(page);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("/cohort");
+    await expect(page.getByTestId("cohort-fix-first")).toContainText(worst.item);
+
+    if (SPONSOR_UI) {
+      const studio = page.getByTestId("cohort-studio");
+      await expect(studio.getByText("Rubric items missed most")).toBeVisible();
+      await expect(studio.getByText("Pass rate by question")).toBeVisible();
+      await expect(studio.getByText("Pass rate by course")).toBeVisible();
+      await expect(studio.locator("canvas").first()).toBeVisible();
+      await expect(page.getByTestId("cohort-tables")).toHaveCount(0);
+      await expect(page.getByText("AG Studio by AG Grid Ltd")).toBeVisible();
+      expect(await code()).toMatch(/ag-studio/i);
+
+      // Self-serve: a creator adds a widget, it survives a reload, and reset brings the layout back.
+      const numbers = studio.locator(".ag-studio-value-widget");
+      await expect(numbers).toHaveCount(4);
+      await page.setViewportSize({ width: 1440, height: 1400 });
+      await page.getByTestId("studio-edit").click();
+      await expect(studio.getByText("Compose", { exact: true })).toBeVisible();
+      const tile = await studio.getByText("KPI", { exact: true }).last().boundingBox();
+      await page.mouse.click(tile!.x + tile!.width / 2, tile!.y - 10);
+      await expect(numbers).toHaveCount(5);
+      await page.reload();
+      await expect(numbers).toHaveCount(5);
+      await page.getByTestId("studio-reset").click();
+      await expect(numbers).toHaveCount(4);
+    } else {
+      const tables = page.getByTestId("cohort-tables");
+      await expect(tables.getByRole("gridcell", { name: "Q1 Honing or sharpening" })).toBeVisible();
+      await expect(tables.getByRole("gridcell", { name: worst.item }).first()).toBeVisible();
+      await expect(tables.getByText("Rubric items missed most")).toBeVisible();
+      await expect(page.getByTestId("cohort-studio")).toHaveCount(0);
+      await page.waitForLoadState("networkidle");
+      const served = await code();
+      expect(served.length).toBeGreaterThan(100_000);
+      expect(served).not.toMatch(/ag-?studio|bryntum/i);
+    }
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: "screenshots/cohort-results.png" });
+  });
+
+  test("sample learners are labelled, and stay out of the course team's list", async ({ page, request }) => {
+    test.skip((await mode(request)) !== "mock", "Sample data only exists on mock PayPal.");
+    expect((await request.post("/api/dev/seed")).ok()).toBe(true);
+    await page.goto("/cohort");
+    await expect(page.getByText("Includes 36 made-up sample learners")).toBeVisible();
+    await page.goto("/team");
+    await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
+    await expect(page.getByText("Sample learner")).toHaveCount(0);
+  });
 
   test("fail twice, a person approves, PayPal refunds", async ({ page, request }) => {
     const id = await buy(page, request, "Alex Rivera");

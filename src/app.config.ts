@@ -19,6 +19,7 @@ export const appConfig = {
   nav: [
     { label: "Course", href: "/course" },
     { label: "Course team", href: "/team" },
+    { label: "Cohort results", href: "/cohort" },
     { label: "Activity", href: "/activity" },
   ],
 
