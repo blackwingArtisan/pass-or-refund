@@ -1,6 +1,7 @@
-import { ArrowRight, Bot, Check, Landmark, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
-import { MoneyBadge } from "../money-badge";
+import { COURSE_PRICE_CENTS } from "@/lib/course/content";
+import { formatCents } from "@/lib/course/policy";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
@@ -27,37 +28,37 @@ export function SiteHeader() {
   );
 }
 
-function TimelinePreview() {
+/** The moment the product exists for, with the amount from the one price constant. */
+function RefundPreview() {
   const rows = [
-    { icon: Bot, title: "Settlement agent started", sub: "Claude Haiku 5.5", tone: "bg-brand-50 text-brand-600 ring-brand-200" },
-    { icon: Landmark, title: "Check authorization", sub: "GET /v2/payments/authorizations/8AA8…", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", done: true },
-    { icon: ShieldCheck, title: "Capture $80.00 of $120.00", sub: "Approved by you · guard threshold $50", tone: "bg-amber-50 text-amber-600 ring-amber-300", money: { v: "80.00", d: "in" as const } },
-    { icon: Lock, title: "Void the remaining hold", sub: "POST /v2/payments/authorizations/…/void", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", money: { v: "40.00", d: "neutral" as const } },
+    { verdict: "Met", tone: "bg-emerald-50 text-emerald-700", item: "Says honing pushes a rolled edge back", quote: "lines the edge back up" },
+    { verdict: "Partial", tone: "bg-amber-50 text-amber-700", item: "Says when the stone is ready", quote: "Soak the stone for a while" },
+    { verdict: "Missed", tone: "bg-red-50 text-red-700", item: "Burr must run heel to tip", quote: null },
   ];
   return (
     <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-900">Agent timeline</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
-        </span>
+        <span className="text-sm font-semibold text-zinc-900">Second attempt</span>
+        <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Not passed</span>
       </div>
-      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-zinc-200">
+      <ol className="space-y-2">
         {rows.map((r) => (
-          <li key={r.title} className="relative flex items-start gap-3">
-            <span className={`z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${r.tone}`}>
-              <r.icon className="size-4" />
-            </span>
-            <div className="min-w-0 flex-1 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-zinc-900">{r.title}</p>
-                {r.money ? <MoneyBadge amount={{ currency_code: "USD", value: r.money.v }} direction={r.money.d} size="sm" /> : r.done ? <Check className="size-4 text-emerald-600" /> : null}
-              </div>
-              <p className="truncate font-mono text-[11px] text-zinc-500">{r.sub}</p>
+          <li key={r.item} className="rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-medium text-zinc-900">{r.item}</p>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${r.tone}`}>{r.verdict}</span>
             </div>
+            <p className="truncate text-xs text-zinc-500">{r.quote ? `\u201c${r.quote}\u201d` : "Added to your study list"}</p>
           </li>
         ))}
       </ol>
+      <div className="mt-4 flex items-start gap-3 rounded-xl bg-brand-50 px-4 py-3">
+        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" />
+        <div>
+          <p className="font-semibold text-zinc-900">Refund issued, sorry we let you down</p>
+          <p className="text-sm text-zinc-600">{formatCents(COURSE_PRICE_CENTS)} back through PayPal, approved by a person.</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -84,10 +85,10 @@ export function Hero() {
             </ButtonLink>
           </div>
           <p className="mt-6 flex items-center gap-2 text-sm text-zinc-500">
-            <ShieldCheck className="size-4 text-emerald-600" /> Caps, approvals and an audit log on every money-moving step.
+            <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
         </div>
-        <TimelinePreview />
+        <RefundPreview />
       </div>
     </section>
   );
@@ -98,7 +99,7 @@ export function HowItWorks() {
     <section id="how" className="border-y border-zinc-200/70 bg-white py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">How it works</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Three steps, fully visible</h2>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">From payment to pass or refund</h2>
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           {appConfig.landing.steps.map((s, i) => (
             <div key={s.title} className="relative rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6">
@@ -135,7 +136,7 @@ export function CtaBand() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-3xl bg-gradient-to-br from-brand-700 to-brand-900 px-8 py-12 text-white shadow-xl md:flex-row md:items-center">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{appConfig.tagline}</h2>
-          <p className="mt-2 text-white/75">Runs end to end in mock mode. Switch to PayPal sandbox with two environment variables.</p>
+          <p className="mt-2 text-white/75">Try it: buy the sample course, then fail it twice with the demo answers.</p>
         </div>
         <ButtonLink href={appConfig.landing.primaryCta.href} size="lg" variant="secondary" className="border-transparent">
           {appConfig.landing.primaryCta.label} <ArrowRight className="size-4" />

@@ -18,7 +18,8 @@ export function ModeBadges({ className, vertical }: { className?: string; vertic
       </span>
       <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ring-1 ring-inset", ai.mode === "live" ? "bg-violet-50 text-violet-700 ring-violet-200" : "bg-zinc-100 text-zinc-700 ring-zinc-200")}>
         <Sparkles className="size-3.5" />
-        {ai.mode === "live" ? ai.models.default : "AI mock"}
+        {/* Grading is this app's only AI call, and it runs on the "smart" role. */}
+        {ai.mode === "live" ? ai.models.smart : "AI mock"}
       </span>
       {ai.mode === "live" ? (
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-zinc-600 ring-1 ring-inset ring-zinc-200" title="Today's AI spend vs. AI_DAILY_CAP_USD">
