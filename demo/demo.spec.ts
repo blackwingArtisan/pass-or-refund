@@ -21,6 +21,7 @@ test("demo", async ({ page, request }) => {
   await highlight(page, page.getByTestId("guarantee"));
   await caption(page, "The guarantee sits right next to the pay button.");
   await page.getByTestId("learner-name").fill("Alex Rivera");
+  await page.getByTestId("learner-email").fill(`alex.rivera.${Date.now()}@example.com`);
   await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
   if (!sandbox) await page.getByTestId("mock-approve").click();
   await page.waitForURL(/\/learn\/en_/, { timeout: 60_000 });
@@ -35,6 +36,7 @@ test("demo", async ({ page, request }) => {
   await caption(page, "Claude marks every rubric item and quotes the answer. Code adds up the score.");
   await page.getByTestId("study-list").scrollIntoViewIfNeeded();
   await caption(page, "What was missed becomes the study list. One more try.");
+  await page.getByTestId("mark-reviewed").click();
   clock.check("first fail");
 
   // Scene 4: second fail

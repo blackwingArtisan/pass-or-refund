@@ -16,11 +16,14 @@ export function CourseScreen() {
   const { toast } = useToast();
   const router = useRouter();
   const [learnerName, setLearnerName] = useState("");
+  const [learnerEmail, setLearnerEmail] = useState("");
   const enrollmentId = useRef("");
   const name = learnerName.trim();
+  const email = learnerEmail.trim();
+  const ready = Boolean(name) && /^\S+@\S+\.\S+$/.test(email);
 
   async function createOrder() {
-    const created = await kitFetch<{ enrollmentId: string; orderId: string }>("/api/enrollments", { json: { learnerName: name } });
+    const created = await kitFetch<{ enrollmentId: string; orderId: string }>("/api/enrollments", { json: { learnerName: name, learnerEmail: email } });
     enrollmentId.current = created.enrollmentId;
     return { orderId: created.orderId };
   }
@@ -59,15 +62,18 @@ export function CourseScreen() {
             <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
               <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
             </Field>
+            <Field label="Your email" hint="The guarantee is one refund per learner per course, tracked by this address." htmlFor="learner-email">
+              <Input id="learner-email" data-testid="learner-email" type="email" value={learnerEmail} maxLength={200} onChange={(e) => setLearnerEmail(e.target.value)} placeholder="alex@example.com" />
+            </Field>
             <CheckoutButton
               createOrder={createOrder}
               onApprove={onApprove}
               onError={(e) => toast({ title: "The payment didn't go through", description: e.message, variant: "error" })}
               amountLabel={formatCents(COURSE_PRICE_CENTS)}
-              disabled={!name}
+              disabled={!ready}
               label={`Buy for ${formatCents(COURSE_PRICE_CENTS)}`}
             />
-            {name ? null : <p className="text-xs text-zinc-500">Add your name to buy.</p>}
+            {ready ? null : <p className="text-xs text-zinc-500">Add your name and email to buy.</p>}
           </CardBody>
         </Card>
       </div>

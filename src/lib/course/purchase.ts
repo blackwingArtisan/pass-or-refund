@@ -11,8 +11,8 @@ import { createEnrollment, requireEnrollment, saveEnrollment } from "./enrollmen
 import type { Enrollment } from "./types";
 
 /** The amount comes from the course, never the browser. */
-export async function startPurchase(learnerName: string): Promise<{ enrollment: Enrollment; orderId: string }> {
-  const created = createEnrollment(learnerName);
+export async function startPurchase(learnerName: string, learnerEmail: string): Promise<{ enrollment: Enrollment; orderId: string }> {
+  const created = createEnrollment(learnerName, learnerEmail);
   const order = await getPayPal().orders.create(
     {
       intent: "CAPTURE",

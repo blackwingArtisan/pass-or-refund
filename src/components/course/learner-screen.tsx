@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Award, CircleAlert, Clock, Send, ShieldCheck } from "lucide-react";
+import { Award, BookOpenCheck, CircleAlert, Clock, Send, ShieldCheck } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { course, lessons, rubric } from "@/lib/course/content";
-import { everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND } from "@/lib/course/policy";
+import { attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND } from "@/lib/course/policy";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
@@ -129,18 +129,37 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
           </div>
         ))}
       </dl>
+      {refund.refundStatus === "PENDING" ? (
+        <p data-testid="refund-pending-note" className="mt-4 text-sm text-zinc-600">
+          PayPal has accepted this refund and is still paying it out{refund.refundStatusReason === "ECHECK" ? " from the seller's bank" : ""}. That can take a few days. This page updates when it settles.
+        </p>
+      ) : null}
       <p className="mt-4 text-xs text-zinc-500">Read back from PayPal after the refund{refund.rereadAt ? ` at ${new Date(refund.rereadAt).toLocaleTimeString("en-US")}` : ""}.</p>
     </div>
   );
 }
 
 /** What happens next, in one line, after a failed attempt. */
-function AfterFail({ enrollment, attempt }: { enrollment: EnrollmentView; attempt: Attempt }) {
+function AfterFail({ enrollment, attempt, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onReviewed: () => void }) {
+  const prior = enrollment.guarantee.checks.find((c) => c.rule === "one_refund_per_learner");
   if (enrollment.guaranteeVoid) return <Notice tone="error" icon={<CircleAlert className="size-4" />}>The guarantee no longer applies, because an attempt tried to instruct the grader. You can still study and try again.</Notice>;
-  const counted = attempt.score >= MIN_POINTS_FOR_REFUND && everyQuestionAnswered(attempt.answers);
+  if (prior && !prior.passed) return <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="prior-refund">This purchase isn&rsquo;t covered by the guarantee, because it allows one refund per learner per course and you&rsquo;ve had yours. You can still study and try again.</Notice>;
+  const why = attemptComplete(attempt) ? "because you hadn't marked your study list as reviewed" : `because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points`;
+  const reviewed = enrollment.reviewedAttempt === attempt.number;
   return (
     <Notice tone="info" icon={<Clock className="size-4" />} testId="fail-count">
-      {counted ? `That's ${enrollment.completedFails} of ${FAILS_FOR_REFUND} completed attempts toward your refund.` : `This attempt doesn't count toward a refund, because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points.`} Work through your study list, then <a href="#final-check" className="font-medium text-brand underline">try again</a>.
+      {countsTowardRefund(attempt) ? `That's ${enrollment.completedFails} of ${FAILS_FOR_REFUND} completed attempts toward your refund.` : `This attempt doesn't count toward a refund, ${why}.`} Work through your study list, then <a href="#final-check" className="font-medium text-brand underline">try again</a>.
+      <div className="mt-2">
+        {reviewed ? (
+          <p data-testid="study-list-reviewed" className="flex items-center gap-1.5 font-medium text-zinc-900">
+            <BookOpenCheck className="size-4" /> Study list reviewed
+          </p>
+        ) : (
+          <Button size="sm" variant="secondary" icon={<BookOpenCheck className="size-4" />} onClick={onReviewed} data-testid="mark-reviewed">
+            I&rsquo;ve reviewed my study list
+          </Button>
+        )}
+      </div>
     </Notice>
   );
 }
@@ -154,7 +173,7 @@ export function LearnerScreen({ id }: { id: string }) {
   const [grading, setGrading] = useState(false);
   const url = `/api/enrollments/${id}`;
   const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
-  const waiting = enrollment?.status === "refund_pending";
+  const waiting = enrollment?.status === "refund_pending" || enrollment?.refund?.refundStatus === "PENDING";
 
   useEffect(() => {
     let live = true;
@@ -180,6 +199,14 @@ export function LearnerScreen({ id }: { id: string }) {
       toast({ title: "Your attempt wasn't graded", description: (e as Error).message, variant: "error" });
     } finally {
       setGrading(false);
+    }
+  }
+
+  async function markReviewed() {
+    try {
+      setEnrollment(await kitFetch<EnrollmentView>(`${url}/review`, { method: "POST" }));
+    } catch (e) {
+      toast({ title: "That didn't save", description: (e as Error).message, variant: "error" });
     }
   }
 
@@ -209,6 +236,11 @@ export function LearnerScreen({ id }: { id: string }) {
               <strong>You&rsquo;ve earned your refund.</strong> It&rsquo;s waiting for a person on the <Link href="/team" className="font-medium text-brand underline">course team</Link> to approve it. No money has moved yet.
             </Notice>
           ) : null}
+          {enrollment.status === "refund_declined" ? (
+            <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="refund-declined">
+              <strong>The course team declined this refund.</strong> No money has moved, and your payment stands. Their reason: {enrollment.refund?.declineNote ?? "none given"}.
+            </Notice>
+          ) : null}
           {enrollment.status === "refund_blocked" ? (
             <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="refund-blocked">
               <strong>Your refund hasn&rsquo;t gone through.</strong> No money has moved. The course team can review it again. {enrollment.refund?.error}
@@ -217,7 +249,7 @@ export function LearnerScreen({ id }: { id: string }) {
 
           {canAttempt && latest?.outcome === "fail" ? (
             <>
-              <AfterFail enrollment={enrollment} attempt={latest} />
+              <AfterFail enrollment={enrollment} attempt={latest} onReviewed={markReviewed} />
               <Guarantee />
             </>
           ) : null}

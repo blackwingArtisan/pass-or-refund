@@ -2,8 +2,7 @@
 import { gradeAttempt, type GradeOnce } from "@/lib/grading/grade";
 import { HttpError } from "@/lib/http";
 import { rubric } from "./content";
-import { activeGrading, requireEnrollment, saveEnrollment } from "./enrollments";
-import { refundDue } from "./policy";
+import { activeGrading, guaranteeFor, requireEnrollment, saveEnrollment } from "./enrollments";
 import { requestRefund } from "./refund";
 import type { Attempt, Enrollment, EnrollmentStatus } from "./types";
 
@@ -11,6 +10,16 @@ import type { Attempt, Enrollment, EnrollmentStatus } from "./types";
 function statusAfter(attempt: Attempt): EnrollmentStatus {
   if (attempt.outcome === "pass") return "passed";
   return attempt.outcome === "review" ? "under_review" : "active";
+}
+
+const missedItems = (attempt: Attempt) => attempt.runs[attempt.shownRun].items.filter((item) => item.verdict === "not_met");
+
+/** The learner says they worked through the study list from their latest attempt. */
+export function markStudyListReviewed(id: string): Enrollment {
+  const enrollment = requireEnrollment(id);
+  const latest = enrollment.attempts.at(-1);
+  if (enrollment.status !== "active" || latest?.outcome !== "fail") throw new HttpError(409, "There's no study list to review right now.", "conflict");
+  return saveEnrollment({ ...enrollment, reviewedAttempt: latest.number });
 }
 
 export async function submitAttempt(id: string, input: Record<string, string>, channel: string, grade?: GradeOnce): Promise<Enrollment> {
@@ -23,11 +32,13 @@ export async function submitAttempt(id: string, input: Record<string, string>, c
   activeGrading().add(id);
   try {
     const number = before.attempts.length + 1;
+    const previous = before.attempts.at(-1);
+    const reviewedStudyList = !previous || before.reviewedAttempt === previous.number || missedItems(previous).length === 0;
     const graded = await gradeAttempt(answers, `attempt ${number}`, grade);
-    const attempt: Attempt = { ...graded, number, submittedAt: new Date().toISOString(), answers };
+    const attempt: Attempt = { ...graded, number, submittedAt: new Date().toISOString(), answers, reviewedStudyList };
     const attempts = [...before.attempts, attempt];
     const saved = saveEnrollment({ ...requireEnrollment(id), attempts, status: statusAfter(attempt) });
-    return attempt.outcome === "fail" && refundDue(attempts) ? requestRefund(saved, channel).enrollment : saved;
+    return attempt.outcome === "fail" && guaranteeFor(saved).due ? requestRefund(saved, channel).enrollment : saved;
   } finally {
     activeGrading().delete(id);
   }

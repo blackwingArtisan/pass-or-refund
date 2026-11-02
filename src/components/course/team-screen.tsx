@@ -20,6 +20,7 @@ const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
   passed: { label: "Passed", tone: "success" },
   under_review: { label: "Needs review", tone: "warning" },
   refund_pending: { label: "Refund needs approval", tone: "warning" },
+  refund_declined: { label: "Refund declined", tone: "danger" },
   refund_blocked: { label: "Refund blocked", tone: "danger" },
   refunded: { label: "Refunded", tone: "success" },
 };
@@ -49,7 +50,7 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           <div>
             <p className="font-semibold text-zinc-900">{enrollment.learnerName}</p>
             <p className="text-sm text-zinc-500">
-              Paid {enrollment.payment?.capturedCents === undefined ? "nothing yet" : formatCents(enrollment.payment.capturedCents)}. {enrollment.attempts.length === 0 ? "No attempts yet." : `Scores: ${enrollment.attempts.map((a) => a.score).join(", ")}.`}
+              {enrollment.learnerEmail}. Paid {enrollment.payment?.capturedCents === undefined ? "nothing yet" : formatCents(enrollment.payment.capturedCents)}. {enrollment.attempts.length === 0 ? "No attempts yet." : `Scores: ${enrollment.attempts.map((a) => a.score).join(", ")}.`}
             </p>
           </div>
           <span className="flex items-center gap-3">
@@ -60,18 +61,23 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           </span>
         </div>
         {enrollment.guaranteeVoid ? <p className="text-sm text-red-700">An attempt was flagged for instructing the grader. The guarantee is void.</p> : null}
+        {enrollment.status === "refund_pending" && !enrollment.approval ? <p className="text-sm text-zinc-600">The refund agent is checking the policy.</p> : null}
         {enrollment.approval ? (
           <ApprovalPrompt
             approvalId={enrollment.approval.id}
             summary={enrollment.approval.summary}
             reason={enrollment.approval.reason}
             amount={enrollment.approval.amountValue ? { currency_code: CURRENCY, value: enrollment.approval.amountValue } : undefined}
+            reasons={enrollment.refund?.proposal?.reasons}
+            askDeclineNote
             onDecided={onChange}
           />
         ) : null}
-        {enrollment.status === "refund_blocked" ? (
+        {enrollment.status === "refund_blocked" || enrollment.status === "refund_declined" ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2">
-            <p className="text-sm text-red-900">{enrollment.refund?.error}</p>
+            <p className="text-sm text-red-900" data-testid="refund-stopped">
+              {enrollment.status === "refund_declined" ? `Declined: ${enrollment.refund?.declineNote ?? "no reason given"}. No money moved.` : enrollment.refund?.error}
+            </p>
             <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} loading={busy} onClick={retry} data-testid="retry-refund">
               Review again
             </Button>

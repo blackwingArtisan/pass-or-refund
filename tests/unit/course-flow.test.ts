@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getApprovals } from "@/lib/agent/approvals";
-import { submitAttempt } from "@/lib/course/attempts";
+import { markStudyListReviewed, submitAttempt } from "@/lib/course/attempts";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { requireEnrollment, viewEnrollment } from "@/lib/course/enrollments";
 import { completePurchase, startPurchase } from "@/lib/course/purchase";
@@ -11,24 +11,33 @@ import { getMockPayPal, getPayPal } from "@/lib/paypal";
 
 const CHANNEL = "test";
 
-async function buy() {
-  const { enrollment, orderId } = await startPurchase("Alex Rivera");
+let learners = 0;
+
+async function buy(email = `learner${++learners}@example.com`) {
+  const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
   getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com" });
   return completePurchase(enrollment.id, orderId, CHANNEL);
 }
+
+const WAIT = { timeout: 5_000, interval: 25 };
 
 const waitForApproval = (id: string) =>
   vi.waitFor(() => {
     const approval = viewEnrollment(requireEnrollment(id)).approval;
     if (!approval) throw new Error("No approval yet");
     return approval;
-  });
+  }, WAIT);
 
-const waitForStatus = (id: string, status: string) => vi.waitFor(() => expect(requireEnrollment(id).status).toBe(status));
+const waitForStatus = (id: string, status: string) => vi.waitFor(() => expect(requireEnrollment(id).status).toBe(status), WAIT);
 
-async function failTwice() {
-  const { id } = await buy();
-  await submitAttempt(id, samples.fail1, CHANNEL);
+async function failAndReview(id: string, sample: keyof typeof samples) {
+  await submitAttempt(id, samples[sample], CHANNEL);
+  markStudyListReviewed(id);
+}
+
+async function failTwice(email?: string) {
+  const { id } = await buy(email);
+  await failAndReview(id, "fail1");
   await submitAttempt(id, samples.fail2, CHANNEL);
   return id;
 }
@@ -42,7 +51,7 @@ describe("purchase", () => {
   });
 
   it("won't capture an order the learner hasn't approved", async () => {
-    const { enrollment, orderId } = await startPurchase("Alex Rivera");
+    const { enrollment, orderId } = await startPurchase("Alex Rivera", "alex@example.com");
     await expect(completePurchase(enrollment.id, orderId, CHANNEL)).rejects.toThrow(/didn't go through/);
     expect(requireEnrollment(enrollment.id).status).toBe("unpaid");
   });
@@ -104,8 +113,8 @@ describe("attempts", () => {
 
   it("voids the guarantee on an injection attempt", async () => {
     const { id } = await buy();
-    await submitAttempt(id, samples.inject, CHANNEL);
-    await submitAttempt(id, samples.fail1, CHANNEL);
+    await failAndReview(id, "inject");
+    await failAndReview(id, "fail1");
     const third = await submitAttempt(id, samples.fail2, CHANNEL);
     expect(third.status).toBe("active");
     expect(third.refund).toBeUndefined();
@@ -133,14 +142,15 @@ describe("refund", () => {
     expect(refund?.refundId).toBeTruthy();
   });
 
-  it("moves no money on a decline, and the team can ask again", async () => {
+  it("moves no money on a decline, leaves a readable state, and the team can ask again", async () => {
     const id = await failTwice();
-    getApprovals().decide((await waitForApproval(id)).id, "denied", "test");
-    await waitForStatus(id, "refund_blocked");
+    getApprovals().decide((await waitForApproval(id)).id, "denied", "test", "Their answers look copied");
+    await waitForStatus(id, "refund_declined");
 
     const captureId = requireEnrollment(id).payment!.captureId!;
     expect((await getPayPal().payments.getCapture(captureId)).status).toBe("COMPLETED");
-    expect(requireEnrollment(id).refund?.error).toBeTruthy();
+    expect(requireEnrollment(id).refund).toMatchObject({ declineNote: "Their answers look copied", declinedBy: "test" });
+    expect(requireEnrollment(id).refund?.refundId).toBeUndefined();
 
     retryRefund(id, CHANNEL);
     getApprovals().decide((await waitForApproval(id)).id, "approved", "test");

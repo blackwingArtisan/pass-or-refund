@@ -11,7 +11,7 @@ interface Amount {
 export interface PayPalObjects {
   order: { id: string; status: string; intent: string; purchase_units: { amount: Amount; custom_id?: string; payments: { captures: { id: string; status: string; amount: Amount }[] } }[] };
   capture: { id: string; status: string; amount: Amount };
-  refund?: { id: string; status: string; amount: Amount };
+  refund?: { id: string; status: string; status_details?: { reason: string }; amount: Amount };
 }
 
 async function token(): Promise<string> {

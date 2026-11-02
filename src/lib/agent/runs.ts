@@ -38,8 +38,8 @@ export function listRuns(channel?: string): AgentRun[] {
   return [...runs.values()].filter((r) => !channel || r.channel === channel).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-/** Kicks off a run and returns immediately. Use runAgentToCompletion() in tests/scripts. */
-export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
+/** Registers a run without starting it. Pair with runAgentToCompletion() when code awaits the end of the run. */
+export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
   const run: AgentRun = {
     id: `run_${randomUUID().slice(0, 12)}`,
     agentId: def.id,
@@ -52,6 +52,12 @@ export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { c
     costUsd: 0,
   };
   runs.set(run.id, run);
+  return run;
+}
+
+/** Kicks off a run and returns immediately. Use runAgentToCompletion() in tests/scripts. */
+export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
+  const run = createAgentRun(def, input, opts);
   void runAgentToCompletion(def, input, run);
   return run;
 }

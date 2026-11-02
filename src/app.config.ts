@@ -48,6 +48,8 @@ export const appConfig = {
     requireApprovalFor: ["refund_course_purchase", "accept_dispute_claim"],
     maxPerAction: "500.00",
     maxPerDay: "2000.00",
+    // A proposal can wait for a person this long. It dies with the process either way.
+    approvalTimeoutMs: 60 * 60 * 1000,
   } satisfies Partial<GuardPolicy>,
 };
 

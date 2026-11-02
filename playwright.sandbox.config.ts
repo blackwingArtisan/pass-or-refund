@@ -24,7 +24,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: HOSTED ? undefined : {
-    command: `rm -rf .data-sandbox && npx next build && npx next start --port ${PORT}`,
+    command: `rm -rf .data-sandbox .next-e2e && npx next build && npx next start --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: false,
     timeout: 300_000,
@@ -35,6 +35,7 @@ export default defineConfig({
       KIT_DATA_DIR: ".data-sandbox",
       AI_RATE_LIMIT_PER_MINUTE: "120",
       NEXT_DIST_DIR: ".next-e2e",
+      NEXT_PUBLIC_SPONSOR_UI: process.env.NEXT_PUBLIC_SPONSOR_UI ?? "",
     },
   },
 });
