@@ -14,6 +14,7 @@ import type { PayPalApi } from "./api";
 import { instrument } from "./instrument";
 import { MockPayPal } from "./mock";
 import { SandboxPayPal } from "./sandbox";
+import { ServerSdkPayPal } from "./server-sdk";
 import { signMockWebhook } from "./webhooks";
 
 export type { PayPalApi, RequestOptions } from "./api";
@@ -48,7 +49,8 @@ function createMock(): MockPayPal {
 function rawClient(): MockPayPal | SandboxPayPal {
   const env = getEnv();
   if (env.paypalMode === "sandbox") {
-    return singleton("paypal:sandbox", () => new SandboxPayPal({ clientId: env.paypalClientId!, clientSecret: env.paypalClientSecret!, webhookId: env.paypalWebhookId }));
+    // App change: Orders and refunds use PayPal's Server SDK here (server-sdk.ts); the rest stays on the kit's REST client.
+    return singleton("paypal:sandbox", () => new ServerSdkPayPal({ clientId: env.paypalClientId!, clientSecret: env.paypalClientSecret!, webhookId: env.paypalWebhookId }));
   }
   return singleton("paypal:mock", createMock);
 }

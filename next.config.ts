@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   // CommonJS + Node-only deps (axios, paypal-server-sdk, an npm package named "os").
-  serverExternalPackages: ["@paypal/agent-toolkit"],
+  serverExternalPackages: ["@paypal/agent-toolkit", "@paypal/paypal-server-sdk"],
   poweredByHeader: false,
   // No floating dev badge: it would show up in demo recordings.
   devIndicators: false,
