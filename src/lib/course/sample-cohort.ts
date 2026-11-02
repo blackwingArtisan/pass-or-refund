@@ -1,5 +1,5 @@
 /**
- * Made-up learners for the dashboard, loaded only by "Load demo data" on mock PayPal. They live
+ * Made-up learners for the dashboard, loaded only by the mock PayPal seed (POST /api/dev/seed). They live
  * in their own collection, so they never reach the refund flow or the course team's list, and
  * the dashboard says when it is showing them. Scores come from the real rubric and pass rule.
  */
