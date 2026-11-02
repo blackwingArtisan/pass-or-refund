@@ -36,9 +36,22 @@ async function buy(page: Page, request: APIRequestContext, name: string, email =
   return page.url().split("/learn/")[1];
 }
 
+/** The hosted app allows 6 AI requests a minute per address, and each submit is one. Local configs lift the limit. */
+const AI_CALL_GAP_MS = 11_000;
+let lastAiCall = 0;
+
+async function submitAttempt(page: Page) {
+  if (process.env.E2E_BASE_URL) {
+    const wait = lastAiCall + AI_CALL_GAP_MS - Date.now();
+    if (wait > 0) await page.waitForTimeout(wait);
+    lastAiCall = Date.now();
+  }
+  await page.getByTestId("submit-attempt").click();
+}
+
 async function attempt(page: Page, sample: string, number: number) {
   await page.getByTestId(`sample-${sample}`).click();
-  await page.getByTestId("submit-attempt").click();
+  await submitAttempt(page);
   await expect(page.getByTestId(`attempt-${number}`)).toBeVisible({ timeout: 120_000 });
   return Number(await page.getByTestId(`score-${number}`).innerText().then((t) => t.split("/")[0].trim()));
 }
@@ -498,19 +511,19 @@ test.describe("mock-safe flows", () => {
       const typed = await page.getByTestId("answer-q1").inputValue();
 
       await outage(request, "credit");
-      await page.getByTestId("submit-attempt").click();
+      await submitAttempt(page);
       await expect(page.getByTestId("grading-unavailable")).toContainText("run out of AI grading credit");
       await expect(page.getByTestId("answer-q1")).toHaveValue(typed);
       await page.getByTestId("grading-unavailable").scrollIntoViewIfNeeded();
       await page.screenshot({ path: "screenshots/ai-credit-out.png" });
 
       await outage(request, "down");
-      await page.getByTestId("submit-attempt").click();
+      await submitAttempt(page);
       await expect(page.getByTestId("grading-unavailable")).toContainText("isn't answering right now");
       expect((await enrollmentOf(request, id)).attempts).toHaveLength(0);
 
       await outage(request, null);
-      await page.getByTestId("submit-attempt").click();
+      await submitAttempt(page);
       await expect(page.getByTestId("attempt-1")).toBeVisible();
       await expect(page.getByTestId("grading-unavailable")).toHaveCount(0);
     });
@@ -566,7 +579,7 @@ test.describe("real AI path with no budget left", () => {
   test("no AI budget: the learner reads why, keeps their answers and nothing counts", async ({ page, request }) => {
     const id = await buy(page, request, "Cap Zero");
     await page.getByTestId("sample-fail1").click();
-    await page.getByTestId("submit-attempt").click();
+    await submitAttempt(page);
     await expect(page.getByTestId("grading-unavailable")).toContainText("run out of AI grading credit");
     await expect(page.getByTestId("answer-q1")).not.toBeEmpty();
     expect((await enrollmentOf(request, id)).attempts).toHaveLength(0);
