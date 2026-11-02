@@ -6,7 +6,7 @@ import { setMockOutage } from "@/lib/ai/mock-outage";
 import { AiCreditError, isOutOfAiCredit } from "@/lib/ai/errors";
 import { isCreditRefusal } from "@/lib/ai/client";
 import { markStudyListReviewed, settleReview, skipAttemptGap, submitAttempt, tickStudyItem } from "@/lib/course/attempts";
-import { activeRefunds, requireEnrollment, viewEnrollment } from "@/lib/course/enrollments";
+import { activeRefunds, requireEnrollment, saveEnrollment, viewEnrollment } from "@/lib/course/enrollments";
 import { answerSimilarity, ATTEMPT_GAP_HOURS, missedItems, nearCopyOf, NEAR_COPY_SIMILARITY, shortfallItems } from "@/lib/course/policy";
 import { completePurchase, recoverPayment, resumePurchase, startPurchase } from "@/lib/course/purchase";
 import { caughtUpWithPayPal } from "@/lib/course/recovery";
@@ -287,6 +287,21 @@ describe("the app stops between PayPal paying and our record", () => {
 
     const recovered = await caughtUpWithPayPal(requireEnrollment(id));
     expect(recovered).toMatchObject({ status: "refunded", refund: { refundStatus: "COMPLETED", refundedCents: 4_900, captureStatus: "REFUNDED" } });
+    expect(refundCapture).not.toHaveBeenCalled();
+  });
+
+  it("reads a refund back when someone looks, if the first read never happened", async () => {
+    const { id } = await buy();
+    await failTwice(id);
+    getApprovals().decide((await approvalOf(id)).id, "approved", "test");
+    await statusOf(id, "refunded");
+    await vi.waitFor(() => expect(activeRefunds().has(id)).toBe(false), WAIT);
+    const enrollment = requireEnrollment(id);
+    saveEnrollment({ ...enrollment, refund: { ...enrollment.refund!, captureStatus: undefined, rereadAt: undefined } });
+
+    const refundCapture = vi.spyOn(getPayPal().payments, "refundCapture");
+    const seen = await caughtUpWithPayPal(requireEnrollment(id));
+    expect(seen.refund).toMatchObject({ refundStatus: "COMPLETED", captureStatus: "REFUNDED", rereadAt: expect.any(String) });
     expect(refundCapture).not.toHaveBeenCalled();
   });
 

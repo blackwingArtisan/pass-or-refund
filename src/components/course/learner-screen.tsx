@@ -171,7 +171,7 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
           This page updates when it settles.
         </p>
       ) : null}
-      <p className="mt-4 text-xs text-zinc-500">Read back from PayPal after the refund{refund.rereadAt ? ` at ${new Date(refund.rereadAt).toLocaleTimeString("en-US")}` : ""}.</p>
+      <p className="mt-4 text-xs text-zinc-500">{refund.rereadAt ? `Read back from PayPal after the refund at ${new Date(refund.rereadAt).toLocaleTimeString("en-US")}.` : "Checking this with PayPal."}</p>
     </div>
   );
 }
@@ -239,7 +239,8 @@ export function LearnerScreen({ id }: { id: string }) {
   const [gradingProblem, setGradingProblem] = useState<string | null>(null);
   const url = `/api/enrollments/${id}`;
   const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
-  const waiting = enrollment?.status === "refund_pending" || enrollment?.status === "under_review" || enrollment?.refund?.refundStatus === "PENDING";
+  const { status, refund } = enrollment ?? {};
+  const waiting = status === "refund_pending" || status === "under_review" || refund?.refundStatus === "PENDING" || (status === "refunded" && !refund?.rereadAt);
 
   useEffect(() => {
     let live = true;
@@ -348,7 +349,8 @@ export function LearnerScreen({ id }: { id: string }) {
           {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} problem={gradingProblem} onSubmit={submit} /> : null}
         </div>
         <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
-          <ToolCallTimeline steps={timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and guarded steps show up here as they happen." />
+          {/* The feed holds everyone's payments, which would contradict "PayPal hasn't taken any money". */}
+          <ToolCallTimeline steps={enrollment.status === "unpaid" ? [] : timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and guarded steps show up here as they happen." />
         </div>
       </div>
     </>

@@ -68,10 +68,14 @@ export async function recoverRefund(enrollment: Enrollment, paypal: PayPalApi): 
 
 const PENDING_REREAD_MS = 30_000;
 
-/** A PENDING refund settles on PayPal's side later, so a learner looking at it asks PayPal again. */
+/**
+ * A PENDING refund settles on PayPal's side later, so a learner looking at it asks PayPal again.
+ * So does one we never got to read back, because the screens show PayPal's word, not ours.
+ */
 export async function withSettledRefund(enrollment: Enrollment): Promise<Enrollment> {
   const { refund } = enrollment;
-  if (enrollment.status !== "refunded" || refund?.refundStatus !== "PENDING") return enrollment;
+  if (enrollment.status !== "refunded" || !refund?.refundId) return enrollment;
+  if (refund.rereadAt && refund.refundStatus !== "PENDING") return enrollment;
   if (Date.now() - Date.parse(refund.rereadAt ?? "0") < PENDING_REREAD_MS) return enrollment;
   return readBackRefund(enrollment.id, getPayPal()).catch(() => enrollment);
 }

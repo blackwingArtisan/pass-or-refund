@@ -72,7 +72,7 @@ const WRAPPED_CELL = { lineHeight: "1.35", paddingTop: 10, paddingBottom: 10 };
 const onPhone = <T,>(columns: ColDef<T>[], keep: (keyof T & string)[], width: Partial<ColDef<T>> = {}): ColDef<T>[] =>
   columns
     .filter((column) => (keep as string[]).includes(String(column.field)))
-    .map((column, index) => ({ ...column, minWidth: 80, maxWidth: undefined, flex: 1, filter: false, suppressHeaderMenuButton: true, ...(index === 0 ? { wrapText: true, autoHeight: true, cellStyle: WRAPPED_CELL, ...width } : {}) }));
+    .map((column, index) => ({ ...column, minWidth: index === 0 ? 80 : 104, maxWidth: undefined, flex: 1, filter: false, suppressHeaderMenuButton: true, ...(index === 0 ? { wrapText: true, autoHeight: true, cellStyle: WRAPPED_CELL, ...width } : {}) }));
 
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
