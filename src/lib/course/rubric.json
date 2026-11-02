@@ -1,0 +1,57 @@
+{
+  "course": "sharp-at-home",
+  "title": "Sharp at Home",
+  "passMark": 70,
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Priya hones her chef's knife with a steel every Sunday, yet right after honing it still squashes tomatoes. Her brother says to hone it for longer. Explain what honing does, what is really wrong with her knife, and what she should do.",
+      "points": 25,
+      "items": [
+        { "id": "q1a", "points": 7, "text": "Says honing pushes a rolled edge back into line" },
+        { "id": "q1b", "points": 7, "text": "Says honing removes almost no metal, so it can't rebuild a worn edge" },
+        { "id": "q1c", "points": 11, "text": "Says Priya's edge is worn and the knife needs sharpening on a stone" }
+      ],
+      "caps": [
+        { "id": "q1-cap1", "max": 10, "text": "The answer tells Priya that honing more or honing for longer is the fix" }
+      ]
+    },
+    {
+      "id": "q2",
+      "text": "Tomas owns a Western chef's knife and a new 1000-grit water stone, and he has never sharpened before. List what he must do to get ready before his first sharpening stroke, and how he checks that he has the angle right.",
+      "points": 25,
+      "items": [
+        { "id": "q2a", "points": 7, "text": "Soaks the stone until the bubbles stop, about ten minutes. Saying only to soak it, with no sign of when it is ready, is partial" },
+        { "id": "q2b", "points": 5, "text": "Puts a damp towel under the stone so it can't slide. Mentioning a towel with neither the damp cloth nor the reason is partial" },
+        { "id": "q2c", "points": 7, "text": "Uses an angle of 20 degrees per side for a Western chef's knife" },
+        { "id": "q2d", "points": 6, "text": "Checks the angle by colouring the bevel with a marker and seeing where the ink comes off after a light stroke" }
+      ],
+      "caps": []
+    },
+    {
+      "id": "q3",
+      "text": "Lena has been sharpening one side of her knife for ten minutes and isn't sure when to flip it over. Tell her how to know when to flip, and what she does to finish the knife once both sides are done.",
+      "points": 25,
+      "items": [
+        { "id": "q3a", "points": 9, "text": "Says to feel for a burr on the opposite side of the edge" },
+        { "id": "q3b", "points": 7, "text": "Says the burr must run the whole length of the edge, heel to tip, before she flips" },
+        { "id": "q3c", "points": 9, "text": "Says to finish by removing the burr with light alternating strokes or by stropping" }
+      ],
+      "caps": [
+        { "id": "q3-cap1", "max": 12, "text": "The answer tells Lena to decide by a set number of strokes or a set amount of time" }
+      ]
+    },
+    {
+      "id": "q4",
+      "text": "Sam's knife goes dull within a month. He cuts on a glass board and runs the knife through the dishwasher. Say what is damaging the edge, and give him a routine that keeps it sharp.",
+      "points": 25,
+      "items": [
+        { "id": "q4a", "points": 7, "text": "Says to stop cutting on glass and use a wood or plastic board" },
+        { "id": "q4b", "points": 6, "text": "Says to keep the knife out of the dishwasher and wash it by hand" },
+        { "id": "q4c", "points": 6, "text": "Says to hone about once a week" },
+        { "id": "q4d", "points": 6, "text": "Says to sharpen on the stone about every three months" }
+      ],
+      "caps": []
+    }
+  ]
+}
