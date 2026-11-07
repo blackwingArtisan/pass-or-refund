@@ -12,6 +12,7 @@ import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
+import { isCourseStep } from "@/lib/course/scope";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
@@ -148,7 +149,7 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
     <div data-testid="refund-issued" className="rounded-2xl border-2 border-brand-200 bg-gradient-to-b from-brand-50 to-white px-6 py-8">
       <ShieldCheck className="size-9 text-brand" />
       <h2 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-950">Refund issued, sorry we let you down</h2>
-      <p className="mt-1 text-zinc-600">You did the work and the course didn&rsquo;t get you there, so every cent goes back through PayPal.</p>
+      <p className="mt-1 text-zinc-600">You did the work and the course didn&rsquo;t get you there, so every cent goes back through PayPal. Your access to the lessons ends with the refund.</p>
       <dl className="mt-5 grid gap-x-6 gap-y-3 sm:grid-cols-2">
         {rows.map(([label, value, testId]) => (
           <div key={label}>
@@ -279,7 +280,7 @@ export function LearnerScreen({ id }: { id: string }) {
     }
   }
 
-  const timelineSteps = useMemo(() => steps.filter((s) => s.channel !== "global" || s.kind === "webhook").map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
+  const timelineSteps = useMemo(() => steps.filter(isCourseStep).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
   if (missing) return <EmptyState title="We can't find that enrollment" description="It may have been cleared." action={<Link href="/course" className="text-sm font-medium text-brand">Back to the course</Link>} />;
   if (!enrollment) return <SkeletonCard />;

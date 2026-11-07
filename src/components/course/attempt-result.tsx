@@ -47,6 +47,9 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
         <div>
           <h3 className="font-semibold text-zinc-900">Attempt {attempt.number}</h3>
           <p className="text-sm text-zinc-500">{attempt.runs.length > 1 ? "This was close, so it was graded three times. The middle score counts." : `Pass mark ${rubric.passMark} out of 100.`}</p>
+          <p data-testid={`grader-${attempt.number}`} className="text-xs text-zinc-500">
+            {run.mocked ? "Graded from recorded verdicts (AI mock mode)." : `Graded by ${run.model ?? "Claude"} against the public rubric. Code added up the points.`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <p className="text-2xl font-semibold tabular-nums text-zinc-900" data-testid={`score-${attempt.number}`}>
@@ -80,7 +83,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
         {rubric.questions.map((question, index) => {
           const caps = question.caps.filter((cap) => run.caps.some((c) => c.id === cap.id && c.triggered));
           return (
-            <div key={question.id} className="rounded-lg border border-zinc-200 px-4 py-3">
+            <div key={question.id} data-testid={`question-${attempt.number}-${question.id}`} className="rounded-lg border border-zinc-200 px-4 py-3">
               <div className="flex items-baseline justify-between gap-3">
                 <p className="text-sm font-semibold text-zinc-900">Question {index + 1}</p>
                 <p className="font-mono text-sm tabular-nums text-zinc-600">

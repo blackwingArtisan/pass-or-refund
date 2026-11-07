@@ -1,7 +1,8 @@
 /**
- * Made-up learners for the dashboard, loaded only by the mock PayPal seed (POST /api/dev/seed). They live
- * in their own collection, so they never reach the refund flow or the course team's list, and
- * the dashboard says when it is showing them. Scores come from the real rubric and pass rule.
+ * Made-up learners for the dashboard, labelled "Sample cohort" wherever they show. They live in
+ * their own collection, so they never reach the refund flow or the course team's list. Seeded by
+ * `npm run seed`, `npm run seed:sandbox`, or the dashboard's first read. Scores come from the real
+ * rubric and pass rule.
  */
 import { outcomeOfMedian } from "@/lib/grading/decide";
 import { pointsFor, type ScoredItem } from "@/lib/grading/frozen/score-items";
@@ -74,6 +75,15 @@ function sampleEnrollment(index: number, now: number): Enrollment {
   };
 }
 
+/** The same 36 learners every time: only their dates move with `now`. */
+export const sampleEnrollments = (now = Date.now()): Enrollment[] => Array.from({ length: LEARNERS }, (_, index) => sampleEnrollment(index, now));
+
 export function seedSampleCohort(now = Date.now()): void {
-  sampleCohort().replaceAll(Array.from({ length: LEARNERS }, (_, index) => sampleEnrollment(index, now)));
+  sampleCohort().replaceAll(sampleEnrollments(now));
+}
+
+/** The sample cohort, seeded on first read so the dashboard is never empty on a fresh deploy. */
+export function readSampleCohort(): Enrollment[] {
+  if (sampleCohort().list().length === 0) seedSampleCohort();
+  return sampleCohort().list();
 }

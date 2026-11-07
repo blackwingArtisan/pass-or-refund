@@ -1,0 +1,42 @@
+{
+  "videos": {
+    "main": "videos/demo-pass-or-refund.webm",
+    "popup": "videos/demo-paypal-window.webm"
+  },
+  "parts": [
+    {
+      "src": "main",
+      "from": 0,
+      "to": 7.836
+    },
+    {
+      "src": "main",
+      "from": 105.704,
+      "to": 119.907
+    },
+    {
+      "src": "main",
+      "from": 121.688,
+      "to": 141.622
+    },
+    {
+      "src": "main",
+      "from": 144.106,
+      "to": 156.603
+    },
+    {
+      "src": "main",
+      "from": 155.804,
+      "to": 162.871
+    },
+    {
+      "src": "main",
+      "from": 165.223,
+      "to": 165.838
+    },
+    {
+      "src": "main",
+      "from": 165.341
+    }
+  ]
+}

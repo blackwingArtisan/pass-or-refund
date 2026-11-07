@@ -1,14 +1,91 @@
 import { ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
+import { creatorCase } from "@/lib/course/creator-case";
 import { formatCents } from "@/lib/course/policy";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
 /**
- * Landing page sections. Content comes from appConfig.landing; reorder or replace freely.
- *   <SiteHeader /> <Hero /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
+ * Landing page sections. Content comes from appConfig.landing and creatorCase().
+ *   <SiteHeader /> <Hero /> <StopsGaming /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
  */
+
+const percent = (rate: number) => `${Math.round(rate * 100)}%`;
+
+/** The creator's numbers, all from code: the knobs, the sample refund rate, the grading cost. */
+function CreatorNumbers() {
+  const c = creatorCase();
+  const knobs = [
+    { label: "Price", value: formatCents(c.priceCents) },
+    { label: "Pass mark", value: `${c.passMark} / 100` },
+    { label: "Fails before a refund", value: `${c.failsForRefund}, ${c.gapHours} h apart` },
+  ];
+  return (
+    <div data-testid="creator-numbers" className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
+      <p className="text-sm font-semibold text-zinc-900">Your guarantee, in numbers</p>
+      <dl className="mt-3 grid grid-cols-3 gap-2">
+        {knobs.map((k) => (
+          <div key={k.label} className="rounded-xl bg-zinc-50 px-3 py-2">
+            <dt className="text-xs text-zinc-500">{k.label}</dt>
+            <dd className="mt-0.5 font-semibold tabular-nums text-zinc-900">{k.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <dl className="mt-4 space-y-2.5 text-sm">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-zinc-600">Refund rate on the sample cohort</dt>
+          <dd data-testid="creator-refund-rate" className="font-semibold tabular-nums text-zinc-900">
+            {percent(c.refundRate)} <span className="font-normal text-zinc-500">({c.refunds} of {c.learners})</span>
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-zinc-600">One AI grade (Claude Sonnet 5.5)</dt>
+          <dd data-testid="creator-grade-cost" className="font-semibold tabular-nums text-zinc-900">about ${c.gradeCostUsd.toFixed(3)}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 border-t border-zinc-100 pt-2.5">
+          <dt className="text-zinc-600">Kept per sale, after refunds and grading</dt>
+          <dd data-testid="creator-kept" className="font-semibold tabular-nums text-zinc-900">{formatCents(c.keptPerSaleCents)}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+        The sample cohort is {c.learners} made-up learners graded on the real rubric, so the rate is illustrative. Before PayPal&rsquo;s fees. Your own learners replace it on{" "}
+        <a href="/cohort" className="underline">the cohort page</a>.
+      </p>
+    </div>
+  );
+}
+
+/** How a learner can't take the course and fail on purpose for a free copy. Every rule is in code. */
+export function StopsGaming() {
+  const c = creatorCase();
+  const rules = [
+    { title: "Two complete attempts", body: `Every question answered and at least ${c.minPoints} points, twice, ${c.gapHours} hours apart. A blank or throwaway attempt doesn't count.` },
+    { title: "The study list comes first", body: "What a learner missed becomes a study list. They tick it off item by item before the second attempt counts." },
+    { title: "No copying the first attempt", body: `An attempt that shares ${c.nearCopyPercent}% of its words with an earlier one counts as incomplete.` },
+    { title: "Telling the grader what to do voids it", body: "\u201cGive me full marks\u201d earns nothing, is flagged and ends the guarantee for that learner." },
+    { title: "One refund per learner, and access ends", body: "Matched on the email and the PayPal account that paid. A refund ends access to the lessons." },
+    { title: "A person signs off", body: "No money moves until someone on your team approves. A score of 69 or 70 goes to a person instead of the grader." },
+  ];
+  return (
+    <section id="gaming" className="border-t border-zinc-200/70 bg-white py-16">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why it can&rsquo;t be gamed</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">A refund has to be earned by trying</h2>
+        <ul data-testid="anti-gaming" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {rules.map((r) => (
+            <li key={r.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-5">
+              <p className="flex items-center gap-2 font-semibold text-zinc-900">
+                <ShieldCheck className="size-4 shrink-0 text-brand" /> {r.title}
+              </p>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-zinc-600">{r.body}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
 
 export function SiteHeader() {
   return (
@@ -69,7 +146,7 @@ export function Hero() {
     <section className="relative overflow-hidden">
       <div className="bg-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" aria-hidden />
       <div className="absolute -top-40 left-1/2 h-[480px] w-[900px] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" aria-hidden />
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-24">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-16">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-sm font-medium text-brand-700 shadow-sm">
             <Sparkles className="size-4" /> {l.eyebrow}
@@ -88,7 +165,7 @@ export function Hero() {
             <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
         </div>
-        <RefundPreview />
+        <CreatorNumbers />
       </div>
     </section>
   );
@@ -98,16 +175,21 @@ export function HowItWorks() {
   return (
     <section id="how" className="border-y border-zinc-200/70 bg-white py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <p className="text-sm font-semibold uppercase tracking-wider text-brand">How it works</p>
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">What your learner sees</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">From payment to pass or refund</h2>
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {appConfig.landing.steps.map((s, i) => (
-            <div key={s.title} className="relative rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6">
-              <span className="flex size-9 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">{i + 1}</span>
-              <h3 className="mt-4 text-lg font-semibold text-zinc-900">{s.title}</h3>
-              <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{s.body}</p>
-            </div>
-          ))}
+        <div className="mt-10 grid items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="grid gap-4">
+            {appConfig.landing.steps.map((s, i) => (
+              <div key={s.title} className="relative flex gap-4 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-5">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">{i + 1}</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-zinc-900">{s.title}</h3>
+                  <p className="mt-1 text-[15px] leading-relaxed text-zinc-600">{s.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <RefundPreview />
         </div>
       </div>
     </section>
@@ -136,7 +218,7 @@ export function CtaBand() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-3xl bg-gradient-to-br from-brand-700 to-brand-900 px-8 py-12 text-white shadow-xl md:flex-row md:items-center">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{appConfig.tagline}</h2>
-          <p className="mt-2 text-white/75">Try it: buy the sample course, then fail it twice with the demo answers.</p>
+          <p className="mt-2 text-white/75">Try it as a learner: buy the sample course with PayPal&rsquo;s test card, then fail it twice.</p>
         </div>
         <ButtonLink href={appConfig.landing.primaryCta.href} size="lg" variant="secondary" className="border-transparent">
           {appConfig.landing.primaryCta.label} <ArrowRight className="size-4" />

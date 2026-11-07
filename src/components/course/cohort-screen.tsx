@@ -14,6 +14,7 @@ import { formatUsd, type Cohort, type CourseSummary, type ItemSummary, type Ques
 
 export interface CohortResponse extends Cohort {
   sampleLearners: number;
+  realLearners: number;
   studioLicenseKey?: string;
 }
 
@@ -94,7 +95,7 @@ function CohortTables({ cohort }: { cohort: CohortResponse }) {
     <div className="space-y-6" data-testid="cohort-tables">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cohort.courses.map((c) => (
-          <Stat key={c.course} label="Pass rate" value={<span data-testid="cohort-pass-rate">{percent(c.passRate)}</span>} hint={`${c.passed} of ${c.learners} learners`} />
+          <Stat key={c.course} label={`Pass rate, ${c.course}`} value={<span data-testid="cohort-pass-rate">{percent(c.passRate)}</span>} hint={`${c.passed} of ${c.learners} learners`} />
         ))}
         <Stat label="Learners tested" value={cohort.sources.learners.length} hint={`${cohort.paidLearners} paid`} />
         <Stat label="Attempts" value={cohort.sources.attempts.length} hint={cohort.flaggedAttempts ? `${cohort.flaggedAttempts} flagged, left out of the rubric numbers` : "None flagged"} />
@@ -147,7 +148,15 @@ export function CohortScreen() {
         eyebrow="Course team"
         title="Cohort results"
         description="How learners did across every attempt, and which parts of the course to fix."
-        actions={cohort?.sampleLearners ? <Badge tone="warning">Includes {cohort.sampleLearners} made-up sample learners</Badge> : null}
+        actions={
+          cohort?.sampleLearners ? (
+            <Badge tone="warning">
+              <span data-testid="sample-cohort-label">
+                Sample cohort: {cohort.sampleLearners} made-up learners{cohort.realLearners ? ` plus ${cohort.realLearners} real` : ""}
+              </span>
+            </Badge>
+          ) : null
+        }
       />
       {error ? <p className="text-sm text-danger-700">{error}</p> : null}
       {!cohort && !error ? <SkeletonCard /> : null}

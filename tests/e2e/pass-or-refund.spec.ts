@@ -8,6 +8,7 @@ import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
+import { payInPayPalWindow } from "./paypal-popup";
 import { captureBehindTheApp, readPayPalObjects, readRefunds, refundBehindTheApp } from "./paypal-reread";
 
 const PRICE = fromMinor(COURSE_PRICE_CENTS, "USD");
@@ -170,10 +171,10 @@ test.describe("mock-safe flows", () => {
   });
 
   test("sample learners are labelled, and stay out of the course team's list", async ({ page, request }) => {
-    test.skip((await mode(request)) !== "mock", "Sample data only exists on mock PayPal.");
-    expect((await request.post("/api/dev/seed")).ok()).toBe(true);
+    if ((await mode(request)) === "mock") expect((await request.post("/api/dev/seed")).ok()).toBe(true);
     await page.goto("/cohort");
-    await expect(page.getByText("Includes 36 made-up sample learners")).toBeVisible();
+    await expect(page.getByTestId("sample-cohort-label")).toContainText("Sample cohort: 36 made-up learners");
+    await expect(page.getByTestId("cohort-fix-first")).toBeVisible();
     await page.goto("/team");
     await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
     await expect(page.getByText("Sample learner")).toHaveCount(0);
@@ -207,8 +208,7 @@ test.describe("mock-safe flows", () => {
     await team.getByTestId("learner-link").click();
     await expect(page.getByTestId("refund-issued")).toContainText("Refund issued, sorry we let you down", { timeout: 60_000 });
     const sandboxRefund = (await enrollmentOf(request, id)).refund;
-    await expect(page.getByTestId("refund-status")).toHaveText(sandbox ? sandboxRefund!.refundStatus! : "COMPLETED");
-    if (sandboxRefund?.refundStatus === "PENDING") await expect(page.getByTestId("refund-pending-note")).toContainText("balance is smaller than the refund");
+    await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED", { timeout: 30_000 });
     await expect(page.getByTestId("capture-status")).toHaveText(sandboxRefund!.captureStatus!);
     await expect(page.getByTestId("refund-amount")).toHaveText(`$${PRICE}`);
     await page.screenshot({ path: "screenshots/refund-issued.png" });
@@ -223,11 +223,27 @@ test.describe("mock-safe flows", () => {
       expect(paypal.order.purchase_units[0].custom_id).toBe(id);
       expect(paypal.capture.amount).toEqual({ currency_code: "USD", value: PRICE });
       expect(paypal.capture.status).toBe(refund!.captureStatus);
-      // PENDING is PayPal's answer when the seller's balance is under the refund: it pays from the bank, reason ECHECK.
-      expect(paypal.refund).toMatchObject({ status: refund!.refundStatus, amount: { currency_code: "USD", value: PRICE } });
-      expect(["COMPLETED", "PENDING"]).toContain(paypal.refund!.status);
-      if (paypal.refund!.status === "PENDING") expect(paypal.refund!.status_details?.reason).toBe("ECHECK");
+      // This app's seller is funded, so a refund settles at once. PENDING (reason ECHECK) means the balance ran short.
+      expect(paypal.refund, `refund ${paypal.refund?.status} ${paypal.refund?.status_details?.reason ?? ""}`).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
+      expect(paypal.capture.status).toBe("REFUNDED");
     }
+  });
+
+  // Not working yet: after paying, PayPal's guest page variant leaves the window open.
+  test.fixme("the buy button opens PayPal's own window, and the test card pays there", async ({ page, request }) => {
+    test.skip((await mode(request)) !== "sandbox", "PayPal's window only exists on the sandbox.");
+    await page.goto("/course");
+    await page.getByTestId("learner-name").filter({ visible: true }).fill("Pat Window");
+    await page.getByTestId("learner-email").filter({ visible: true }).fill(newEmail("Pat Window"));
+    await payInPayPalWindow(page);
+    await page.waitForURL(/\/learn\/en_/, { timeout: 90_000 });
+    const id = page.url().split("/learn/")[1];
+    const { payment } = await enrollmentOf(request, id);
+    expect(payment).toMatchObject({ captureStatus: "COMPLETED", capturedCents: COURSE_PRICE_CENTS });
+    const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
+    console.log("PayPal window purchase:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value] }));
+    expect(paypal.order.status).toBe("COMPLETED");
+    expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
   });
 
   test("a person declines: no money moves and the learner reads why", async ({ page, request }) => {
@@ -605,14 +621,17 @@ test.describe("paid run", () => {
     await team.getByTestId("approve-button").click();
     await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 90_000 });
     const { attempts, refund, payment } = await enrollmentOf(request, id);
+    await page.goto(`/learn/${id}`);
+    await expect(page.getByTestId("grader-1")).toContainText("Graded by Claude Sonnet 5.5");
+    await expect(page.getByTestId("attempt-1").locator("blockquote").first()).toBeVisible();
     const budget = (await (await request.get("/api/kit/status")).json()).ai.budget;
     console.log("Real AI:", JSON.stringify({ scores: attempts.map((a) => a.score), reasons: held.refund?.proposal?.reasons, refund: [refund?.refundId, refund?.refundStatus, refund?.refundedCents], gradingUsd: attempts.reduce((sum, a) => sum + a.costUsd, 0), spentUsd: budget.spentUsd }));
     expect(attempts.flatMap((a) => a.runs).every((r) => !r.mocked)).toBe(true);
     if ((await mode(request)) === "sandbox") {
       const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!, refund!.refundId);
       console.log("PayPal re-read:", JSON.stringify({ capture: [paypal.capture.id, paypal.capture.status], refund: [paypal.refund?.id, paypal.refund?.status, paypal.refund?.amount.value] }));
-      expect(paypal.refund).toMatchObject({ status: refund!.refundStatus, amount: { value: PRICE } });
-      expect(["COMPLETED", "PENDING"]).toContain(paypal.refund!.status);
+      expect(paypal.refund).toMatchObject({ status: "COMPLETED", amount: { value: PRICE } });
+      expect(paypal.capture.status).toBe("REFUNDED");
     }
   });
 

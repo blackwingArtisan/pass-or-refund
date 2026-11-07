@@ -24,12 +24,12 @@ export const appConfig = {
   ],
 
   landing: {
-    eyebrow: "Built on PayPal + Claude",
-    headline: "Pass the course, or get your money back.",
+    eyebrow: "For online course creators",
+    headline: "Sell your course with a guarantee that pays out.",
     subheadline:
-      "Most course guarantees are small print. Here, AI grades your final check against a public rubric and shows its work. Fail twice and PayPal pays you back, after a person on the course team says yes.",
-    primaryCta: { label: "See the course", href: "/course" },
-    secondaryCta: { label: "How it works", href: "#how" },
+      "Your buyers have been burned by small print. Offer a refund tied to whether they learned: Claude grades the final check against your public rubric, and a learner who fails twice gets their money back through PayPal, after a person on your team approves.",
+    primaryCta: { label: "Try it as a learner", href: "/course" },
+    secondaryCta: { label: "See the sample cohort", href: "/cohort" },
     steps: [
       { title: "Buy with the guarantee in view", body: "The refund terms sit next to the pay button, not in a footer. PayPal takes the payment when you buy." },
       { title: "Get graded, point by point", body: "Four written questions. Claude marks every rubric item met, partial or missed and quotes your words. Code does the maths." },
@@ -38,7 +38,7 @@ export const appConfig = {
     features: [
       { title: "Grading you can check", body: "Every point ties to a rubric item and a quote from your answer. What you missed becomes your study list." },
       { title: "A person approves every refund", body: "AI suggests, policy decides what's due, and no money moves until someone on the course team clicks approve." },
-      { title: "Tricks earn nothing", body: "Telling the grader to give you full marks gets no credit, gets flagged and voids the guarantee." },
+      { title: "Know which lesson to fix", body: "The cohort page shows the rubric items learners miss most and the lesson that teaches each one, with no names attached." },
     ],
   },
 

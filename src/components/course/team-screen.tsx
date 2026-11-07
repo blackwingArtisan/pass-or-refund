@@ -12,6 +12,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea, type Tone } from "@/components/ui";
 import { CURRENCY, rubric } from "@/lib/course/content";
 import { formatCents, shortfallItems } from "@/lib/course/policy";
+import { isCourseStep } from "@/lib/course/scope";
 import type { Attempt, EnrollmentStatus, EnrollmentView } from "@/lib/course/types";
 
 const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
@@ -187,7 +188,9 @@ export function TeamScreen() {
     };
   }, [kitFetch]);
 
-  const timelineSteps = useMemo(() => steps.filter((s) => s.channel !== "global" || s.kind === "webhook").map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
+  // A checkout nobody finished took no money and needs nothing from the team.
+  const paid = useMemo(() => enrollments?.filter((e) => e.status !== "unpaid"), [enrollments]);
+  const timelineSteps = useMemo(() => steps.filter(isCourseStep).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
   return (
     <>
@@ -199,8 +202,8 @@ export function TeamScreen() {
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-4">
           {!enrollments ? <SkeletonCard /> : null}
-          {enrollments?.length === 0 ? <EmptyState icon={<Users className="size-5" />} title="No learners yet" description="Buy the course to see someone here." /> : null}
-          {enrollments?.map((enrollment) => (
+          {paid?.length === 0 ? <EmptyState icon={<Users className="size-5" />} title="No learners yet" description="Buy the course to see someone here." /> : null}
+          {paid?.map((enrollment) => (
             <EnrollmentCard key={enrollment.id} enrollment={enrollment} onChange={load} />
           ))}
         </div>

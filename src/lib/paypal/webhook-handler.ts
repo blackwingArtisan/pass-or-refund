@@ -9,6 +9,7 @@ import { singleton } from "../singleton";
 import { getEnv } from "../env";
 import { getPayPal } from "./index";
 import { ingestPayPalResource, ledger } from "./ledger";
+import { isCourseEvent } from "../course/scope";
 import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, type AnyWebhookEvent } from "./webhooks";
 import "./handlers";
 
@@ -84,7 +85,7 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "INVALID_WEBHOOK_PAYLOAD" }, { status: 400 });
   }
-  if (getEnv().paypalMode === "sandbox" && isOtherAppsEvent(event)) return Response.json({ received: true, ignored: "other-app" });
+  if (getEnv().paypalMode === "sandbox" && (isOtherAppsEvent(event) || !isCourseEvent(event.event_type))) return Response.json({ received: true, ignored: "other-app" });
   const replay = getEnv().paypalMode === "mock" && req.headers.get("x-kit-replay") === "1";
   const result = await processWebhookEvent(event, { replay });
   // Always 2xx once verified, or PayPal keeps retrying; handler errors show on the timeline.

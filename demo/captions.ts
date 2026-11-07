@@ -10,36 +10,46 @@ import type { Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Bottom-centre caption. Waits `ms` (reading time) unless wait=false. */
+/** Height of the caption band. Pages get this much room at the bottom, so a caption never covers what it describes. */
+const BAND_PX = 112;
+
+/** Bottom caption band, full width. Waits `ms` (reading time) unless wait=false. */
 export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean } = {}) {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   await page.evaluate(
-    ({ text, ms }) => {
+    ({ text, ms, band }) => {
       let el = document.getElementById("__demo_caption");
       if (!el) {
+        const room = document.createElement("style");
+        room.textContent = `html { scroll-padding-bottom: ${band + 24}px } body { padding-bottom: ${band}px !important }`;
+        document.head.appendChild(room);
         el = document.createElement("div");
         el.id = "__demo_caption";
         Object.assign(el.style, {
-          position: "fixed", left: "50%", bottom: "36px", transform: "translateX(-50%) translateY(10px)", zIndex: "2147483647",
-          maxWidth: "min(1000px, calc(100vw - 48px))", padding: "16px 26px", borderRadius: "18px",
-          background: "rgba(9,9,11,0.9)", color: "#fff", font: "600 24px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif",
-          textAlign: "center", boxShadow: "0 20px 50px rgba(0,0,0,.35)", opacity: "0", transition: "opacity .3s, transform .3s", pointerEvents: "none",
+          position: "fixed", left: "0", right: "0", bottom: "0", height: `${band}px`, zIndex: "2147483647",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 48px", boxSizing: "border-box",
+          background: "rgba(9,9,11,0.94)", color: "#fff", font: "600 26px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif",
+          textAlign: "center", opacity: "0", transition: "opacity .3s", pointerEvents: "none",
         });
         document.body.appendChild(el);
       }
       el.textContent = text;
       requestAnimationFrame(() => {
         el!.style.opacity = "1";
-        el!.style.transform = "translateX(-50%) translateY(0)";
       });
       clearTimeout((window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer);
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
         el!.style.opacity = "0";
       }, ms);
     },
-    { text, ms },
+    { text, ms, band: BAND_PX },
   );
   if (opts.wait !== false) await sleep(ms);
+}
+
+/** Scrolls an element to the middle of the space above the caption band. */
+export async function centre(target: Locator) {
+  await target.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
 }
 
 /** Full-screen title card (intro/outro). */
@@ -91,6 +101,35 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
     { box, ms },
   );
   await sleep(Math.min(ms, 900));
+}
+
+/**
+ * Times on the main page's video, so scripts/demo-edit.mjs can drop waits and splice in PayPal's
+ * window. The video starts with the page, a moment before the test body runs.
+ */
+export class DemoCuts {
+  private readonly start = Date.now();
+  readonly parts: { src: string; from: number; to?: number }[] = [];
+  private keptFrom = 0;
+  private get now() {
+    return (Date.now() - this.start) / 1000;
+  }
+  /** Stops keeping the main video here; `keep` seconds of what follows stay in. */
+  pause(keep = 1.2) {
+    this.parts.push({ src: "main", from: this.keptFrom, to: this.now + keep });
+  }
+  resume() {
+    this.keptFrom = this.now;
+  }
+  /** Drops the main video from here, plays another recording whole, then picks up where resume() is called. */
+  insert(src: string) {
+    this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
+    this.parts.push({ src, from: 0 });
+  }
+  finish() {
+    this.parts.push({ src: "main", from: this.keptFrom });
+    return this.parts;
+  }
 }
 
 /** Keeps the video under Devpost's 3-minute limit. */

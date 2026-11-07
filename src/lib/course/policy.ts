@@ -12,12 +12,12 @@ export const NEAR_COPY_SIMILARITY = 0.9;
 
 /** Shown before purchase and on the fail screen. */
 export const GUARANTEE_TERMS = [
-  "Fail the final check twice and you get every cent back, automatically.",
+  "Fail the final check twice and you get every cent back.",
   `Each of the two attempts has to be complete: every question answered and at least ${MIN_POINTS_FOR_REFUND} points.`,
   "Mark your study list as reviewed before you try again, or that attempt won't count.",
   "An attempt that nearly copies an earlier one counts as incomplete.",
   `Attempts are ${ATTEMPT_GAP_HOURS} hours apart, so you have time to study.`,
-  "One refund per learner per course.",
+  "One refund per learner per course, and a refund ends your access to the lessons.",
   "Trying to trick the grader voids the guarantee.",
   "A person on the course team approves every refund before any money moves.",
 ];
