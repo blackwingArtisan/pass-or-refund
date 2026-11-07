@@ -42,12 +42,19 @@ const AI_CALL_GAP_MS = 11_000;
 let lastAiCall = 0;
 
 async function submitAttempt(page: Page) {
-  if (process.env.E2E_BASE_URL) {
-    const wait = lastAiCall + AI_CALL_GAP_MS - Date.now();
-    if (wait > 0) await page.waitForTimeout(wait);
-    lastAiCall = Date.now();
+  for (let tries = 0; ; tries++) {
+    if (process.env.E2E_BASE_URL) {
+      const wait = lastAiCall + AI_CALL_GAP_MS - Date.now();
+      if (wait > 0) await page.waitForTimeout(wait);
+      lastAiCall = Date.now();
+    }
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/attempts"));
+    await page.getByTestId("submit-attempt").click();
+    const res = await answered;
+    // The refund agent's AI calls share the per-minute limit, so a busy minute can still refuse a submit. Wait it out once or twice.
+    if (res.status() !== 429 || tries >= 2) return;
+    await page.waitForTimeout((Number(res.headers()["retry-after"]) || 30) * 1000 + 500);
   }
-  await page.getByTestId("submit-attempt").click();
 }
 
 async function attempt(page: Page, sample: string, number: number) {
