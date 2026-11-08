@@ -118,6 +118,12 @@ Checks: `npm run check` (lint, typecheck, unit tests, build, and proof that no s
 
 `npm run demo:record` builds the app, plays the whole story and saves the raw recording; `npm run demo:edit` drops the grading waits, splices in PayPal's checkout window and writes `videos/demo-pass-or-refund.mp4` (under 2:30, PayPal's window included). The captions are the voiceover script: `videos/demo-voiceover.txt` lists each line at its time in the cut. The submission cut runs on the sandbox with live grading: `DEMO_PAYPAL_MODE=sandbox DEMO_AI_MODE=live npm run demo:record && npm run demo:edit`.
 
+## Your own course on /creator
+
+A creator sets up their own course with no account. On `/creator` they write the rubric in a simple form (each question, then one line per thing a good answer says, points first) or paste JSON in the shape of the sample's `/api/rubric/1`. Mistakes come back in plain words, for example "The points add up to 50. They have to add up to 100, so the pass mark reads as a percentage."
+
+A valid rubric gets its fingerprint (the same SHA-256 as the sample course, so pasting the sample rubric gives the sample's own fingerprint) and a link, `/c/cc_<fingerprint>`. The link carries the fingerprint, so it always grades against those exact words; change one word and you get a new fingerprint and a new link, and the old one keeps its rubric. If the stored words ever stopped matching the link, grading stops. The course page shows the public rubric and a final check graded by the same sealed grader, with the creator's optional notes as the course text. Courses are stored like the sample cohort, in a collection on the app's disk (`creator-courses`). Selling a creator's course through PayPal and paying creators are not built; the sample course shows the full purchase and refund.
+
 ## The cohort dashboard
 
 `/cohort` is built from real attempts and PayPal-confirmed refunds. It carries no names or email addresses, and attempts flagged for tricking the grader stay out of the question and rubric numbers. It also shows 36 made-up learners, kept apart from real records and labelled "Sample cohort" on the page, so a fresh deploy isn't empty. `npm run seed:sandbox` (run by Render on boot) seeds only them: none of the starter kit's shop orders reach this app's ledger or timeline.

@@ -418,6 +418,53 @@ test.describe("the story on the first screen", () => {
     expect(height).toBeLessThanOrEqual(900 * 2.4);
   });
 
+  test("a creator sets up their own rubric on /creator: plain-word fixes, a fingerprint that changes with the words, and a link graded against it", { tag: "@live" }, async ({ page }) => {
+    const title = `Bread at Home ${Date.now().toString(36)}`;
+    await page.goto("/creator");
+    await page.getByTestId("creator-title").fill(title);
+    await page.getByTestId("creator-q1-text").fill("How do you know bread dough has proved enough?");
+    await page.getByTestId("creator-q1-lines").fill("30 Says it has doubled in size\n20 Says a poked dent springs back slowly");
+    await page.getByTestId("creator-publish").click();
+    // Only 50 points so far: the fix is said in plain words, and nothing is set up.
+    await expect(page.getByTestId("creator-problems")).toContainText("The points add up to 50. They have to add up to 100");
+    await expect(page.getByTestId("creator-fingerprint")).toHaveCount(0);
+
+    await page.getByTestId("creator-add-question").click();
+    await page.getByTestId("creator-q2-text").fill("Why let a loaf cool before slicing it?");
+    await page.getByTestId("creator-q2-lines").fill("50 Says the crumb is still setting from the steam inside");
+    await page.getByTestId("creator-publish").click();
+    const first = await page.getByTestId("creator-fingerprint").getAttribute("data-fingerprint");
+    expect(first).toMatch(/^[0-9a-f]{12}$/);
+    await expect(page.getByTestId("creator-link")).toContainText(`/c/cc_${first}`);
+
+    // One word changed: a new fingerprint and a new link.
+    await page.getByTestId("creator-q1-lines").fill("30 Says it has nearly doubled in size\n20 Says a poked dent springs back slowly");
+    await page.getByTestId("creator-publish").click();
+    await expect(page.getByTestId("creator-fingerprint")).not.toHaveAttribute("data-fingerprint", first!);
+    const second = await page.getByTestId("creator-fingerprint").getAttribute("data-fingerprint");
+    expect(second).toMatch(/^[0-9a-f]{12}$/);
+    await page.screenshot({ path: "screenshots/creator-setup.png" });
+
+    // The first link still opens the first rubric, graded against its fingerprint.
+    await page.goto(`/c/cc_${first}`);
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByTestId("creator-course-fingerprint")).toHaveText(first!.match(/.{4}/g)!.join(" "));
+    await expect(page.getByTestId("creator-rubric-question").first()).toContainText("Says it has doubled in size");
+    await page.getByTestId("creator-answer-q1").fill("It has doubled in size, and when I poke it the dent springs back slowly.");
+    await page.getByTestId("creator-answer-q2").fill("The crumb is still setting from the steam inside, so slicing early makes it gummy.");
+    await page.getByTestId("creator-submit").click();
+    const result = page.getByTestId("creator-result");
+    await expect(result).toBeVisible({ timeout: 150_000 });
+    await expect(result).toContainText(first!.match(/.{4}/g)!.join(" "));
+    await expect(result.getByText(/^\d+ \/ 100$/)).toBeVisible();
+    await expect(page.getByTestId("creator-line-q1a")).toBeVisible();
+    await result.screenshot({ path: "screenshots/creator-graded.png" });
+
+    // A link with no course behind it says so.
+    await page.goto("/c/cc_000000000000");
+    await expect(page.getByText("This course link doesn't work")).toBeVisible();
+  });
+
   test("a mistyped address has a way back, lesson 1 reads in full before buying, and /cohort says why its numbers move", async ({ page, request }) => {
     const missing = await page.goto("/nope");
     expect(missing?.status()).toBe(404);

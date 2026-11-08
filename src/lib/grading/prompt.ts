@@ -4,5 +4,6 @@ import { renderRubric } from "./frozen/packet";
 import { systemPrompt, userPrompt } from "./frozen/prompts";
 import type { Answers, Rubric } from "./frozen/score-items";
 
-export const graderSystemPrompt = (rubric: Rubric = published) => systemPrompt("checklist", "strict", courseText, renderRubric(rubric));
+/** `course` is the course text the grader reads: the sample course's lessons, or a creator's own notes. */
+export const graderSystemPrompt = (rubric: Rubric = published, course: string = courseText) => systemPrompt("checklist", "strict", course, renderRubric(rubric));
 export const graderUserPrompt = (answers: Answers, rubric: Rubric = published) => userPrompt(rubric, answers);
