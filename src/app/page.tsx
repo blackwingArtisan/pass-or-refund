@@ -6,8 +6,8 @@ export default function LandingPage() {
     <>
       <SiteHeader />
       <main>
-        <Story />
         <Hero />
+        <Story />
         <StopsGaming />
         <HowItWorks />
         <Features />
