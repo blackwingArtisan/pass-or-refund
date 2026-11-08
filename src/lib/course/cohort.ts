@@ -25,6 +25,7 @@ const VERDICT_NAMES = { met: "Met", partial: "Partial", not_met: "Missed" } as c
 
 const REFUND_STATES: Partial<Record<EnrollmentStatus, string>> = {
   refund_pending: "Waiting for a person",
+  refund_review: "With a person for review",
   refund_declined: "Declined",
   refund_blocked: "Blocked",
   refunded: "Refunded",

@@ -34,6 +34,8 @@ export default defineConfig({
       PAYPAL_MODE: process.env.E2E_PAYPAL_MODE ?? "mock",
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",
       KIT_DATA_DIR: ".data-e2e",
+      // Some 45 purchases and refunds a run: more than the $2,000 a day the app allows its agents.
+      AGENT_MAX_PER_DAY: "20000.00",
       AI_RATE_LIMIT_PER_MINUTE: "120",
       API_RATE_LIMIT_PER_MINUTE: "1000",
       MOCK_PAYPAL_LATENCY_MS: "60-160",

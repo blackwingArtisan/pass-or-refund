@@ -59,7 +59,8 @@ export function requestRefund(enrollment: Enrollment, channel: string, agent: Ag
   if (!guaranteeFor(enrollment).due) throw new HttpError(409, "The guarantee doesn't cover this enrollment.", "conflict");
   if (!enrollment.payment?.captureId) throw new HttpError(409, "This enrollment has no payment to refund.", "conflict");
   const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel });
-  const saved = saveEnrollment({ ...enrollment, status: "refund_pending", refund: { runId: run.id, requestedAt: run.startedAt } });
+  // A person's review stays on the record, so the agent knows it can't send the case back to them.
+  const saved = saveEnrollment({ ...enrollment, status: "refund_pending", refund: { runId: run.id, requestedAt: run.startedAt, review: enrollment.refund?.review } });
   activeRefunds().add(enrollment.id);
   const finished = runAgentToCompletion(agent, REFUND_AGENT_GOAL, run)
     .then((done) => (neverProposed(enrollment.id, done) ? proposeWithoutAi(enrollment.id, done, channel) : done))
@@ -79,4 +80,21 @@ export async function retryRefund(id: string, channel: string): Promise<{ enroll
   const recovered = await recoverRefund(enrollment, getPayPal());
   if (recovered.status === "refunded") return { enrollment: recovered, finished: Promise.resolve() };
   return requestRefund(enrollment, channel);
+}
+
+/**
+ * The course team decides a case the refund agent sent to them. "propose" sends it on to the
+ * refund agent, which can't route it back, so a refund proposal reaches the approval gate.
+ * "decline" ends it with the team's note, and no money moves.
+ */
+export function decideReview(id: string, decision: "propose" | "decline", note: string, channel: string): { enrollment: Enrollment; finished: Promise<void> } {
+  const enrollment = requireEnrollment(id);
+  if (enrollment.status !== "refund_review" || !enrollment.refund?.review) throw new HttpError(409, "There's no case waiting for the course team's review here.", "conflict");
+  const at = new Date().toISOString();
+  const review = { ...enrollment.refund.review, decision, decidedBy: "course team", decidedAt: at, note };
+  if (decision === "decline") {
+    const declined = saveEnrollment({ ...enrollment, status: "refund_declined", refund: { ...enrollment.refund, review, declinedAt: at, declinedBy: "course team", declineNote: note } });
+    return { enrollment: declined, finished: Promise.resolve() };
+  }
+  return requestRefund(saveEnrollment({ ...enrollment, refund: { ...enrollment.refund, review } }), channel);
 }

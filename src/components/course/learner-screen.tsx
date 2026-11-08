@@ -157,6 +157,15 @@ function Certificate({ learnerName, attempt, lock }: { learnerName: string; atte
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
+
+/** A note the refund agent wrote for this learner, from the rubric lines they fell short on. */
+function AgentNote({ text }: { text: string }) {
+  return (
+    <span data-testid="refund-note" className="mt-2 block border-l-2 border-brand-200 pl-3 text-zinc-700">
+      {text} <span className="text-xs text-zinc-500">(written by the refund agent)</span>
+    </span>
+  );
+}
 function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
   const refund = enrollment.refund!;
   const rows = [
@@ -379,6 +388,13 @@ export function LearnerScreen({ id }: { id: string }) {
           {enrollment.status === "refund_pending" ? (
             <Notice tone="info" icon={<Clock className="size-4" />} testId="refund-waiting">
               <strong>You&rsquo;ve earned your refund.</strong> It&rsquo;s waiting for a person on the <Link href="/team" className="font-medium text-brand underline">course team</Link> to approve it. No money has moved yet.
+              {enrollment.refund?.proposal?.learnerNote ? <AgentNote text={enrollment.refund.proposal.learnerNote} /> : null}
+            </Notice>
+          ) : null}
+          {enrollment.status === "refund_review" ? (
+            <Notice tone="info" icon={<Clock className="size-4" />} testId="refund-in-review">
+              <strong>A person is looking at your case before the refund.</strong> No money has moved, and nothing is lost while they look.
+              {enrollment.refund?.review?.learnerNote ? <AgentNote text={enrollment.refund.review.learnerNote} /> : null}
             </Notice>
           ) : null}
           {enrollment.status === "refund_declined" ? (
