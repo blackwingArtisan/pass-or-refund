@@ -4,7 +4,7 @@
  * `npm run seed`, `npm run seed:sandbox`, or the dashboard's first read. Scores come from the real
  * rubric and pass rule.
  */
-import { outcomeOfMedian } from "@/lib/grading/decide";
+import { isDecidedByFirstGrade, outcomeOfMedian } from "@/lib/grading/decide";
 import { pointsFor, type ScoredItem } from "@/lib/grading/frozen/score-items";
 import { collection } from "@/lib/store/collection";
 import { COURSE_PRICE_CENTS, course, rubric } from "./content";
@@ -46,7 +46,9 @@ function sampleAttempt(number: number, submittedAt: string, skill: number, roll:
   const score = Object.values(perQuestion).reduce((a, b) => a + b, 0);
   const outcome = outcomeOfMedian(score);
   const run = { total: score, totalQuoteChecked: score, perQuestion, items, caps: [], injectionAttempted: false, injectionQuote: "", mocked: true, costUsd: 0 };
-  return { number, submittedAt, answers: {}, reviewedStudyList: number > 1, outcome, score, runs: [run], shownRun: 0, flagged: false, injectionQuote: "", costUsd: 0 };
+  // A score from 66 to 73 took three grades under the real rule; the sample's is their middle one.
+  const runs = isDecidedByFirstGrade(score) ? [run] : [run, run, run];
+  return { number, submittedAt, answers: {}, reviewedStudyList: number > 1, outcome, score, runs, shownRun: 0, flagged: false, injectionQuote: "", costUsd: 0 };
 }
 
 function sampleEnrollment(index: number, now: number): Enrollment {

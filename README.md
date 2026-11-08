@@ -69,6 +69,15 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 - **AI suggests, code and a person decide.** Code turns verdicts into points (met = full, partial = half rounded down, missed = 0), applies caps and adds up. Under 66 fails and over 73 passes. From 66 to 73 it grades twice more and takes the median: 71 or more passes, 68 or less fails, and 69 or 70 goes to a person.
 - **The method is sealed.** Prompts, rules and scoring in `src/lib/grading/frozen/` are byte copies of the set tested on held-out data. A unit test checks their hashes.
+- **How accurate the grader is.** The sealed method was tested on 20 new attempts across 2 new courses that it had never seen, 11 of them near the pass mark and 3 that told the grader what to do. 2 blind judges scored each attempt first, and the whole method ran 4 times:
+  - No attempt both judges failed was ever passed.
+  - No attempt both judges scored 80 or more was ever refunded.
+  - Attempts both judges passed came out passed 89-100% of the time.
+  - The same outcome on 95% of repeats.
+  - All 3 attempts that told the grader what to do were flagged, every time.
+  - $0.018-0.021 per decision, extra grades included.
+
+  **Not real learners:** the judges, the attempts and the grader are all Claude, and the attempts were written to land near the pass mark, so real learners will be messier. 20 attempts is a small set. Only 1 of the 4 runs is a fully independent repeat; the other 3 reuse the same grades inside the 66-73 band. The figures are in `src/lib/course/grader-accuracy.ts`. `/cohort` shows how many of this app's own attempts needed three grades and how many went to a person.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap in the app (`AI_DAILY_CAP_USD`; once spent, grading stops with a plain message) and per-IP rate limits. A real grade costs about $0.014.
 - **When the model is out:** a due refund still reaches a person. Code builds the proposal from the policy check, through the same tools and Guard, and the card says so. Grading can't be replaced by code, so the learner sees why it stopped, keeps their answers and loses nothing. Running out of AI credit gets its own message.

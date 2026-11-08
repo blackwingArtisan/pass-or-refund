@@ -119,9 +119,18 @@ export interface ItemSummary {
   pointsLost: number;
 }
 
+/** How the frozen rule decided this cohort's attempts: one grade, three grades (66-73), or a person (median 69-70). */
+export interface GradingBands {
+  attempts: number;
+  gradedOnce: number;
+  gradedThreeTimes: number;
+  toPerson: number;
+}
+
 export interface Cohort {
   /** Paid learners, including those who haven't taken the check yet. */
   paidLearners: number;
+  grading: GradingBands;
   /** Attempts left out of the question and rubric numbers because they tried to trick the grader. */
   flaggedAttempts: number;
   sources: { learners: LearnerRow[]; attempts: AttemptRow[]; questions: QuestionRow[]; items: ItemRow[]; refunds: RefundRow[] };
@@ -287,8 +296,18 @@ export function buildCohort(enrollments: Enrollment[]): Cohort {
   const items = honest.flatMap(({ enrollment, attempt }) => itemRows(enrollment, attempt));
   const refunds = paid.flatMap((enrollment) => (enrollment.refund ? [refundRow(enrollment, enrollment.refund)] : []));
 
+  const all = pairs.map(({ attempt }) => attempt);
+  const grading: GradingBands = {
+    attempts: all.length,
+    gradedOnce: countWhere(all, (a) => a.runs.length < 3),
+    gradedThreeTimes: countWhere(all, (a) => a.runs.length >= 3),
+    // Waiting for a person, or already decided by one.
+    toPerson: countWhere(all, (a) => a.outcome === "review" || Boolean(a.settled)),
+  };
+
   return {
     paidLearners: paid.length,
+    grading,
     flaggedAttempts: pairs.length - honest.length,
     sources: { learners, attempts, questions, items, refunds },
     courses: summariseCourses(learners, attempts),

@@ -73,6 +73,18 @@ describe("cohort results", () => {
     expect(cohort.items[0]).toMatchObject({ itemId: "q4a", notMet: 1 });
   });
 
+  it("counts the attempts that needed three grades and the ones that went to a person", () => {
+    const three = (a: Attempt): Attempt => ({ ...a, runs: [a.runs[0], a.runs[0], a.runs[0]] });
+    const review = three(attempt(1, "review"));
+    const settled = { ...three(attempt(2, "pass")), settled: { outcome: "pass" as const, by: "Team", at: "2026-11-01T12:00:00.000Z", note: "ok", checkedItems: [] } };
+    const cohort = buildCohort([
+      enrollment("passed", [attempt(1, "pass")]),
+      enrollment("active", [attempt(1, "fail"), three(attempt(2, "fail"))]),
+      enrollment("passed", [review, settled]),
+    ]);
+    expect(cohort.grading).toEqual({ attempts: 5, gradedOnce: 2, gradedThreeTimes: 3, toPerson: 2 });
+  });
+
   it("keeps trick attempts out of what the course teaches, but counts them", () => {
     const cohort = buildCohort([enrollment("active", [attempt(1, "fail", { q1a: "not_met" }, true)])]);
     expect(cohort.flaggedAttempts).toBe(1);
