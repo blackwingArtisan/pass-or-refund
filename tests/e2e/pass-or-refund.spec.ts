@@ -748,6 +748,52 @@ test.describe("mock-safe flows", () => {
     }
   });
 
+  test("a declined refund is listed on /cohort with its reason, and one left too long shows overdue", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000);
+    await page.goto("/course");
+    await expect(page.getByTestId("guarantee").filter({ visible: true })).toContainText("If the course team declines, they have to say why.");
+    const id = await buy(page, request, "Dana Declined");
+    await failTwice(page);
+    await page.getByTestId("refund-waiting").getByRole("link").click();
+    const team = page.getByTestId(`enrollment-${id}`);
+    await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+    const note = `Declined in test ${id.slice(-6)}: the second attempt repeats a classmate's answers.`;
+    await team.getByTestId("decline-button").click();
+    await expect(team).toContainText("listed on the public cohort page without their name");
+    await team.getByTestId("decline-note").fill(note);
+    await team.getByTestId("decline-button").click();
+    await expect(team.getByTestId("refund-stopped")).toBeVisible();
+    await team.getByTestId("learner-link").click();
+    await expect(page.getByTestId("refund-declined")).toContainText(note);
+    await expect(page.getByTestId("refund-declined")).toContainText("you can still open a dispute with PayPal");
+
+    await page.goto("/cohort");
+    const declines = page.getByTestId("cohort-declines");
+    await expect(declines).toContainText("Refunds declined");
+    await expect(declines.getByTestId("cohort-decline").filter({ hasText: note })).toBeVisible({ timeout: 30_000 });
+    await expect(declines).not.toContainText("Dana Declined");
+    await declines.screenshot({ path: "screenshots/cohort-declines.png" });
+    const { payment } = await enrollmentOf(request, id);
+    if ((await mode(request)) === "sandbox") expect((await readPayPalObjects(payment!.orderId, payment!.captureId!)).capture.status).toBe("COMPLETED");
+
+    // The approval clock is an hour; only the mock can wind it on.
+    if ((await mode(request)) !== "mock") return;
+    const late = await buy(page, request, "Lou Late");
+    await failTwice(page);
+    await expect.poll(async () => Boolean((await enrollmentOf(request, late)).approval), { timeout: 30_000 }).toBe(true);
+    expect((await request.post(`/api/dev/mock/approval-timeout/${late}`, { data: { hoursAgo: 3 } })).ok()).toBe(true);
+    await expect.poll(async () => (await enrollmentOf(request, late)).status).toBe("refund_blocked");
+    await page.goto("/team");
+    await expect(page.getByTestId(`enrollment-${late}`).getByTestId("overdue")).toHaveText("overdue, 3 hours");
+    await page.goto("/cohort");
+    const overdue = page.getByTestId("cohort-overdue");
+    await expect(overdue.getByTestId("cohort-overdue-row").filter({ hasText: "overdue, 3 hours" }).first()).toBeVisible();
+    await overdue.screenshot({ path: "screenshots/cohort-overdue.png" });
+    await page.goto("/team");
+    await page.getByTestId(`enrollment-${late}`).getByTestId("retry-refund").click();
+    await expect(page.getByTestId(`enrollment-${late}`).getByTestId("overdue")).toHaveCount(0, { timeout: 30_000 });
+  });
+
   test("trying to trick the grader gets flagged and voids the guarantee", { tag: "@live" }, async ({ page, request }) => {
     const id = await buy(page, request, "Jo Tricks");
     const score = await attempt(page, "inject", 1);

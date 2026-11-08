@@ -80,7 +80,7 @@ export function ApprovalPrompt({
       {declining ? (
         <div className="mt-3">
           <label htmlFor={`decline-${approvalId}`} className="text-sm font-medium text-zinc-800">
-            Why are you declining? The learner will read this.
+            Why are you declining? The learner reads this, and it&rsquo;s listed on the public cohort page without their name.
           </label>
           <Input id={`decline-${approvalId}`} data-testid="decline-note" className="mt-1" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
         </div>

@@ -399,7 +399,7 @@ export function LearnerScreen({ id }: { id: string }) {
           ) : null}
           {enrollment.status === "refund_declined" ? (
             <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="refund-declined">
-              <strong>The course team declined this refund.</strong> No money has moved, and your payment stands. Their reason: {enrollment.refund?.declineNote ?? "none given"}.
+              <strong>The course team declined this refund.</strong> No money has moved, and your payment stands. Their reason: {enrollment.refund?.declineNote ?? "none given"}. The decline and its reason are listed on the public <Link href="/cohort" className="font-medium underline">cohort page</Link> without your name, and you can still open a dispute with PayPal.
             </Notice>
           ) : null}
           {enrollment.status === "refund_blocked" ? (

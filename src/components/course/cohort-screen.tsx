@@ -62,6 +62,7 @@ const ITEM_COLUMNS: ColDef<ItemSummary>[] = [
 const REFUND_COLUMNS: ColDef<RefundRow>[] = [
   col.date("requestedAt", "Requested"),
   col.text("state", "State", { maxWidth: 190 }),
+  col.text("overdue", "Overdue", { maxWidth: 170 }),
   usdColumn("amountUsd", "Refunded"),
   col.text("paypalStatus", "PayPal says", { maxWidth: 190 }),
   col.text("reason", "Reason", { minWidth: 300, tooltipField: "reason" }),
@@ -117,6 +118,59 @@ function CohortTables({ cohort }: { cohort: CohortResponse }) {
       <Section title="Refunds" description="Amounts are what PayPal reported, not what we asked for.">
         <DataGrid<RefundRow> rows={cohort.sources.refunds} columns={refunds} getRowId={(r) => r.id} height={300} search={false} pageSize={false} emptyMessage="No refund requests yet" />
       </Section>
+    </div>
+  );
+}
+
+const when = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+/**
+ * The course team's side of the guarantee, in public: every refund they declined with the reason
+ * they gave, and any refund left waiting past the time they have to decide. No names.
+ */
+function RefundAccountability({ declines, overdue }: { declines: Cohort["declines"]; overdue: Cohort["overdue"] }) {
+  return (
+    <div className="mb-6 grid gap-4 lg:grid-cols-2">
+      <div data-testid="cohort-declines" className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+        <p className="font-semibold text-zinc-900">
+          Refunds declined <span className="font-normal tabular-nums text-zinc-500">({declines.length})</span>
+        </p>
+        <p className="mt-0.5 text-xs text-zinc-500">Every refund the course team turned down, with the reason the learner was given.</p>
+        {declines.length ? (
+          <ul className="mt-2 space-y-2">
+            {declines.slice(0, 8).map((d) => (
+              <li key={d.id} data-testid="cohort-decline" className="border-l-2 border-red-200 pl-3">
+                <span className="text-zinc-900">&ldquo;{d.note}&rdquo;</span>
+                <span className="block text-xs text-zinc-500">
+                  {d.course}, {when(d.at)}, by the {d.by}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-zinc-500">None declined yet.</p>
+        )}
+      </div>
+      <div data-testid="cohort-overdue" className={`rounded-xl border px-4 py-3 text-sm ${overdue.length ? "border-amber-300 bg-amber-50 text-amber-900" : "border-zinc-200 bg-white text-zinc-700"}`}>
+        <p className="font-semibold text-zinc-900">
+          Waiting on the course team too long <span className="font-normal tabular-nums text-zinc-500">({overdue.length})</span>
+        </p>
+        <p className="mt-0.5 text-xs text-zinc-500">The guarantee gives the course team one hour to decide. A refund past that shows here until someone acts.</p>
+        {overdue.length ? (
+          <ul className="mt-2 space-y-1.5">
+            {overdue.slice(0, 8).map((o) => (
+              <li key={o.id} data-testid="cohort-overdue-row" className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span>
+                  {o.course}: {o.state}
+                </span>
+                <span className="font-semibold tabular-nums">{o.label}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-zinc-500">Nothing overdue.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -205,6 +259,7 @@ export function CohortScreen() {
         <>
           {worst && worst.answered > 0 && worst.missRate > 0 ? <FixFirst item={worst} /> : null}
           <GradingBands grading={cohort.grading} />
+          <RefundAccountability declines={cohort.declines} overdue={cohort.overdue} />
           {CohortStudio ? <CohortStudio cohort={cohort} /> : <CohortTables cohort={cohort} />}
         </>
       ) : null}

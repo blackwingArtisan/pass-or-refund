@@ -16,9 +16,9 @@ import type { Enrollment } from "./types";
 
 const REOPENABLE = ["refund_declined", "refund_blocked"];
 
-function block(id: string, error: string) {
+function block(id: string, error: string, overdueSince?: string) {
   const enrollment = requireEnrollment(id);
-  saveEnrollment({ ...enrollment, status: "refund_blocked", refund: { ...enrollment.refund!, error } });
+  saveEnrollment({ ...enrollment, status: "refund_blocked", refund: { ...enrollment.refund!, error, ...(overdueSince ? { overdueSince } : {}) } });
 }
 
 /** The tool has already recorded a refund that went through, so anything still pending moved no money. */
@@ -29,7 +29,7 @@ function finish(id: string, run: AgentRun) {
   if (approval?.state === "denied") {
     saveEnrollment({ ...enrollment, status: "refund_declined", refund: { ...enrollment.refund!, declinedAt: approval.decidedAt, declinedBy: approval.decidedBy, declineNote: approval.note } });
   } else if (approval?.state === "expired") {
-    block(id, "Nobody on the course team decided in time.");
+    block(id, "Nobody on the course team decided in time.", approval.expiresAt);
   } else {
     block(id, enrollment.refund?.error ?? run.error ?? "The refund agent stopped without proposing a refund.");
   }

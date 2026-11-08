@@ -69,7 +69,7 @@ function RefundReviewBox({ enrollment, onDecided }: { enrollment: EnrollmentView
         <p data-testid="refund-review-reason" className="text-sm text-zinc-700">{review.reason}</p>
       </div>
       <AgentSummary text={review.teamSummary} testId="refund-review-summary" />
-      <Field label="Your note" hint="Needed to decline: the learner reads it." htmlFor={`review-note-${enrollment.id}`}>
+      <Field label="Your note" hint="Needed to decline: the learner reads it, and it's listed on the public cohort page without their name." htmlFor={`review-note-${enrollment.id}`}>
         <Textarea id={`review-note-${enrollment.id}`} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} data-testid="review-note" />
       </Field>
       <div className="flex flex-wrap gap-2">
@@ -206,6 +206,11 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           </div>
           <span className="flex items-center gap-3">
             <Badge tone={status.tone}>{status.label}</Badge>
+            {enrollment.overdue ? (
+              <span data-testid="overdue">
+                <Badge tone="danger">{enrollment.overdue.label}</Badge>
+              </span>
+            ) : null}
             <Link href={`/learn/${enrollment.id}`} className="text-sm font-medium text-brand hover:underline" data-testid="learner-link">
               Learner view
             </Link>

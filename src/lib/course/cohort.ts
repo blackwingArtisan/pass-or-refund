@@ -3,6 +3,7 @@
  * PayPal-confirmed refunds. Row-level sources feed AG Studio, and the rollups feed the plain grid,
  * so both views show the same numbers. No names or email addresses leave this file.
  */
+import { overdueFor } from "./overdue";
 import { formatCents } from "./policy";
 import { course, lessonForItem, lessons, rubric } from "./content";
 import type { Attempt, Enrollment as FullEnrollment, EnrollmentStatus, Refund } from "./types";
@@ -86,6 +87,27 @@ export interface RefundRow {
   paypalStatus: string;
   reason: string;
   requestedAt: string;
+  /** "overdue, 3 hours" when the course team has taken longer than the guarantee allows, else "". */
+  overdue: string;
+}
+
+/** A refund the course team turned down, with the reason they gave. Public: no name. */
+export interface DeclineRow {
+  id: string;
+  course: string;
+  note: string;
+  by: string;
+  at: string;
+}
+
+/** A refund waiting on the course team past the time the guarantee gives them. */
+export interface OverdueRow {
+  id: string;
+  course: string;
+  state: string;
+  label: string;
+  hours: number;
+  since: string;
 }
 
 export interface CourseSummary {
@@ -134,6 +156,10 @@ export interface Cohort {
   grading: GradingBands;
   /** Attempts left out of the question and rubric numbers because they tried to trick the grader. */
   flaggedAttempts: number;
+  /** Every refund the course team declined, newest first, with their note. */
+  declines: DeclineRow[];
+  /** Refunds the course team has left past their time to decide, longest first. */
+  overdue: OverdueRow[];
   sources: { learners: LearnerRow[]; attempts: AttemptRow[]; questions: QuestionRow[]; items: ItemRow[]; refunds: RefundRow[] };
   courses: CourseSummary[];
   questions: QuestionSummary[];
@@ -211,7 +237,7 @@ function itemRows(enrollment: Enrollment, attempt: Attempt): ItemRow[] {
   });
 }
 
-function refundRow(enrollment: Enrollment, refund: Refund): RefundRow {
+function refundRow(enrollment: Enrollment, refund: Refund, now: number | undefined): RefundRow {
   return {
     id: enrollment.id,
     course: courseName(enrollment),
@@ -220,6 +246,7 @@ function refundRow(enrollment: Enrollment, refund: Refund): RefundRow {
     paypalStatus: refund.refundStatus ?? "No refund at PayPal",
     reason: refund.declineNote ?? refund.error ?? refund.proposal?.reasons[0] ?? "",
     requestedAt: refund.requestedAt,
+    overdue: overdueFor(enrollment, now)?.label ?? "",
   };
 }
 
@@ -274,7 +301,8 @@ function summariseItems(rows: ItemRow[]): ItemSummary[] {
   }).sort((a, b) => b.missRate - a.missRate || b.pointsLost - a.pointsLost);
 }
 
-export function buildCohort(enrollments: Enrollment[]): Cohort {
+/** `now` is only for tests; the clock is read only if a refund could be overdue. */
+export function buildCohort(enrollments: Enrollment[], now?: number): Cohort {
   const paid = enrollments.filter((e) => e.status !== "unpaid");
   const tested = paid.filter((e) => e.attempts.length > 0);
 
@@ -295,7 +323,17 @@ export function buildCohort(enrollments: Enrollment[]): Cohort {
   const attempts = pairs.map(({ enrollment, attempt }) => attemptRow(enrollment, attempt));
   const questions = honest.flatMap(({ enrollment, attempt }) => questionRows(enrollment, attempt));
   const items = honest.flatMap(({ enrollment, attempt }) => itemRows(enrollment, attempt));
-  const refunds = paid.flatMap((enrollment) => (enrollment.refund ? [refundRow(enrollment, enrollment.refund)] : []));
+  const refunds = paid.flatMap((enrollment) => (enrollment.refund ? [refundRow(enrollment, enrollment.refund, now)] : []));
+  const declines: DeclineRow[] = paid
+    .filter((e) => e.status === "refund_declined" && e.refund)
+    .map((e) => ({ id: e.id, course: courseName(e), note: e.refund!.declineNote?.trim() || "No reason given.", by: e.refund!.declinedBy ?? "course team", at: e.refund!.declinedAt ?? e.refund!.requestedAt }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+  const overdue: OverdueRow[] = paid
+    .flatMap((e) => {
+      const late = overdueFor(e, now);
+      return late ? [{ id: e.id, course: courseName(e), state: REFUND_STATES[e.status] ?? e.status, ...late }] : [];
+    })
+    .sort((a, b) => a.since.localeCompare(b.since));
 
   const all = pairs.map(({ attempt }) => attempt);
   const grading: GradingBands = {
@@ -310,6 +348,8 @@ export function buildCohort(enrollments: Enrollment[]): Cohort {
     paidLearners: paid.length,
     grading,
     flaggedAttempts: pairs.length - honest.length,
+    declines,
+    overdue,
     sources: { learners, attempts, questions, items, refunds },
     courses: summariseCourses(learners, attempts),
     questions: summariseQuestions(questions),
