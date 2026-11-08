@@ -10,11 +10,13 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { col, DataGrid } from "@/components/data-grid";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, SkeletonCard, Stat } from "@/components/ui";
 import { usePhone } from "@/components/course/use-phone";
+import type { LearnerCounts } from "@/lib/course/learner-counts";
 import { formatUsd, type Cohort, type CourseSummary, type ItemSummary, type QuestionSummary, type RefundRow } from "@/lib/course/cohort";
 
 export interface CohortResponse extends Cohort {
   sampleLearners: number;
   realLearners: number;
+  learners: LearnerCounts;
   studioLicenseKey?: string;
 }
 
@@ -229,8 +231,9 @@ export function CohortScreen() {
         actions={
           cohort?.sampleLearners ? (
             <Badge tone="warning">
-              <span data-testid="sample-cohort-label">
-                Sample cohort: {cohort.sampleLearners} made-up learners{cohort.realLearners ? ` plus ${cohort.realLearners} real` : ""}
+              {/* The line grows with real learners, so it wraps rather than push a phone sideways. */}
+              <span data-testid="sample-cohort-label" className="whitespace-normal">
+                In these numbers: {cohort.learners.line}
               </span>
             </Badge>
           ) : null

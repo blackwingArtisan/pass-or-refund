@@ -465,10 +465,27 @@ test.describe("mock-safe flows", () => {
     await page.screenshot({ path: "screenshots/cohort-results.png" });
   });
 
+  test("the home page's learner counts are the ones /api/team/cohort returns, with no real learner it doesn't hold", { tag: "@live" }, async ({ page }) => {
+    // Other tests may buy in between, so read the API and the page together until they line up.
+    await expect(async () => {
+      await page.goto("/");
+      const stats = page.getByTestId("landing-cohort");
+      await expect(stats.getByTestId("cohort-who")).toBeVisible({ timeout: 5_000 });
+      const shown = { who: await stats.getByTestId("cohort-who").textContent(), graded: await stats.getByTestId("cohort-learners").textContent() };
+      const api = (await (await page.request.get("/api/team/cohort")).json()) as { sampleLearners: number; realLearners: number; learners: { sample: number; real: number; graded: number; line: string } };
+      expect(api.learners).toMatchObject({ sample: api.sampleLearners, real: api.realLearners });
+      expect(shown).toEqual({ who: api.learners.line, graded: String(api.learners.graded) });
+      expect(api.learners.line).toMatch(api.realLearners === 0 ? /, no real ones yet$/ : new RegExp(`and ${api.realLearners} real ones?$`));
+    }).toPass({ timeout: 30_000 });
+    await page.goto("/cohort");
+    const api = (await (await page.request.get("/api/team/cohort")).json()) as { learners: { line: string } };
+    await expect(page.getByTestId("sample-cohort-label")).toContainText(api.learners.line.split(" and ")[0].split(",")[0]);
+  });
+
   test("sample learners are labelled, and stay out of the course team's list", { tag: "@live" }, async ({ page, request }) => {
     if ((await mode(request)) === "mock") expect((await request.post("/api/dev/seed")).ok()).toBe(true);
     await page.goto("/cohort");
-    await expect(page.getByTestId("sample-cohort-label")).toContainText("Sample cohort: 36 made-up learners");
+    await expect(page.getByTestId("sample-cohort-label")).toContainText("In these numbers: 36 made-up sample learners");
     await expect(page.getByTestId("cohort-fix-first")).toBeVisible();
     await page.goto("/team");
     await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();

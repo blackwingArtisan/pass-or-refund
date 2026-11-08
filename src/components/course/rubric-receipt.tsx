@@ -7,10 +7,10 @@ import { showError } from "@/components/error-toast";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Select, Textarea } from "@/components/ui";
-import type { Cohort } from "@/lib/course/cohort";
 import { CONTEST_NOTE_MAX, contestableAttempt, learnerLineText } from "@/lib/course/contest-rules";
 import { shortfallItems } from "@/lib/course/policy";
 import type { EnrollmentView, RubricLock } from "@/lib/course/types";
+import type { CohortResponse } from "./cohort-screen";
 
 /** "3f2a9c1e04b7" -> "3f2a 9c1e 04b7", easier to compare by eye. */
 const grouped = (fingerprint: string) => fingerprint.match(/.{1,4}/g)!.join(" ");
@@ -125,10 +125,10 @@ export function ContestStatus({ enrollment }: { enrollment: EnrollmentView }) {
 /** Pass and refund rates from the cohort page, for a buyer to read before paying. */
 export function CohortStats() {
   const { kitFetch } = useKit();
-  const [cohort, setCohort] = useState<(Cohort & { sampleLearners: number; realLearners: number }) | null>(null);
+  const [cohort, setCohort] = useState<CohortResponse | null>(null);
   useEffect(() => {
     let live = true;
-    kitFetch<Cohort & { sampleLearners: number; realLearners: number }>("/api/team/cohort")
+    kitFetch<CohortResponse>("/api/team/cohort")
       .then((c) => live && setCohort(c))
       .catch(() => undefined);
     return () => {
@@ -138,13 +138,12 @@ export function CohortStats() {
   const course = cohort?.courses[0];
   if (!cohort || !course) return null;
   const percent = (part: number) => `${Math.round((part / Math.max(1, course.learners)) * 100)}%`;
-  const who = `${cohort.sampleLearners} made-up sample learners${cohort.realLearners ? ` and ${cohort.realLearners} real ${cohort.realLearners === 1 ? "one" : "ones"}` : ""}`;
   return (
     <div data-testid="cohort-stats" className="grid grid-cols-3 gap-2 text-center">
       {[
         ["Passed", percent(course.passed), "cohort-pass-rate"],
         ["Refunded", percent(course.refunds), "cohort-refund-rate"],
-        ["Learners", String(course.learners), "cohort-learners"],
+        ["Graded", String(cohort.learners.graded), "cohort-learners"],
       ].map(([label, value, id]) => (
         <div key={id} className="rounded-xl bg-zinc-50 px-3 py-2">
           <p className="text-xs text-zinc-500">{label}</p>
@@ -152,7 +151,7 @@ export function CohortStats() {
         </div>
       ))}
       <p className="col-span-3 text-xs text-zinc-500">
-        From <a href="/cohort" className="underline">the cohort page</a>: {who}, all graded on the same rubric.
+        From <a href="/cohort" className="underline">the cohort page</a>: <span data-testid="cohort-who">{cohort.learners.line}</span>, all graded on the same rubric.
       </p>
     </div>
   );
