@@ -8,7 +8,7 @@ import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
-import { payInPayPalWindow } from "./paypal-popup";
+import { payInPayPalWindow, paypalButtonReady } from "./paypal-popup";
 import { captureBehindTheApp, readPayPalObjects, readRefunds, refundBehindTheApp } from "./paypal-reread";
 
 const PRICE = fromMinor(COURSE_PRICE_CENTS, "USD");
@@ -44,8 +44,11 @@ async function refundWebhookShows(team: Locator, request: APIRequestContext, id:
 /** A new address each time: the hosted suite keeps its data between runs, and a learner only gets one refund. */
 const newEmail = (name: string) => `${name.toLowerCase().replace(/\W+/g, ".")}.${Date.now()}@example.com`;
 
+/** The server-side test card only shows on this address, so learners never see it. */
+const COURSE_FOR_TESTS = "/course?test-card=1";
+
 async function buy(page: Page, request: APIRequestContext, name: string, email = newEmail(name)): Promise<string> {
-  await page.goto("/course");
+  await page.goto(COURSE_FOR_TESTS);
   await expect(page.getByTestId("guarantee").filter({ visible: true })).toContainText("Fail the final check twice");
   await expect(page.getByText("Guarantee: one refund per PayPal account").filter({ visible: true })).toBeVisible();
   await page.getByTestId("learner-name").filter({ visible: true }).fill(name);
@@ -347,10 +350,13 @@ test.describe("mock-safe flows", () => {
     }
   });
 
-  // Not working yet: after paying, PayPal's guest page variant leaves the window open.
-  test.fixme("the buy button opens PayPal's own window, and the test card pays there", { tag: "@live" }, async ({ page, request }) => {
+  test("the buy button opens PayPal's own window, and the test card pays there", { tag: "@live" }, async ({ page, request }) => {
     test.skip((await mode(request)) !== "sandbox", "PayPal's window only exists on the sandbox.");
     await page.goto("/course");
+    const help = page.getByTestId("pay-without-account");
+    await expect(help).toContainText("Pay with debit or credit card inside PayPal\u2019s window");
+    await expect(page.getByTestId("sandbox-card-details")).toContainText("4111 1111 1111 1111");
+    await expect(page.getByTestId("sandbox-test-card")).toHaveCount(0); // the server-side shortcut is for tests only
     await page.getByTestId("learner-name").filter({ visible: true }).fill("Pat Window");
     await page.getByTestId("learner-email").filter({ visible: true }).fill(newEmail("Pat Window"));
     await payInPayPalWindow(page);
@@ -361,6 +367,28 @@ test.describe("mock-safe flows", () => {
     const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
     console.log("PayPal window purchase:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value] }));
     expect(paypal.order.status).toBe("COMPLETED");
+    expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
+  });
+
+  test("PayPal approves but its window never tells the page: the page finds the payment and closes the window", async ({ page, request }) => {
+    test.skip((await mode(request)) !== "sandbox", "PayPal's window only exists on the sandbox.");
+    await page.goto(COURSE_FOR_TESTS);
+    await page.getByTestId("learner-name").filter({ visible: true }).fill("Pat Silent");
+    await page.getByTestId("learner-email").filter({ visible: true }).fill(newEmail("Pat Silent"));
+    const button = await paypalButtonReady(page);
+    const created = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/api/enrollments"));
+    const opened = page.waitForEvent("popup", { timeout: 30_000 });
+    await button.click();
+    const popup = await opened;
+    const { orderId } = await (await created).json();
+    // What the buyer does in PayPal's window, done behind it, so the window never reports back.
+    expect((await request.post(`/api/dev/sandbox/approve-order/${orderId}`)).ok()).toBe(true);
+    await popup.waitForEvent("close", { timeout: 30_000 });
+    await page.waitForURL(/\/learn\/en_/, { timeout: 30_000 });
+    const { payment } = await enrollmentOf(request, page.url().split("/learn/")[1]);
+    const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
+    console.log("PayPal re-read:", JSON.stringify({ silentWindow: [paypal.order.id, paypal.order.status, paypal.capture.id, paypal.capture.status] }));
+    expect(paypal.order).toMatchObject({ id: orderId, status: "COMPLETED" });
     expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
   });
 
@@ -587,7 +615,7 @@ test.describe("mock-safe flows", () => {
     const email = newEmail("Ana Stuck");
     const { id, orderId } = await paidBehindTheApp(request, "Ana Stuck", email);
 
-    await page.goto("/course");
+    await page.goto(COURSE_FOR_TESTS);
     await page.getByTestId("learner-name").filter({ visible: true }).fill("Ana Stuck");
     await page.getByTestId("learner-email").filter({ visible: true }).fill(email);
     await page.getByTestId((await mode(request)) === "sandbox" ? "sandbox-test-card" : "simulate-paypal-approval").click();

@@ -67,7 +67,8 @@ test("demo", async ({ page, request }) => {
   if (!(await page.request.post("/api/team/session", { data: { passcode } })).ok()) throw new Error("The home page's team passcode didn't open /team");
 
   // 1. The guarantee beside the buy button
-  await page.goto("/course");
+  // ?test-card=1 keeps the server-side test card as a fallback, if PayPal's window fails to load.
+  await page.goto("/course?test-card=1");
   const guarantee = page.getByTestId("guarantee");
   await guarantee.waitFor();
   if (sandbox) await page.getByTestId("paypal-v6-button").locator("paypal-button, button, [role=button]").first().waitFor({ timeout: 60_000 });
