@@ -70,13 +70,19 @@ export function CourseScreen() {
                 <li key={lesson.number} className="flex gap-3">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-600">{lesson.number}</span>
                   <div>
-                    <p className="font-medium text-zinc-900">{lesson.name}</p>
-                    <p className="line-clamp-2 text-sm text-zinc-500">{lesson.text}</p>
+                    <p className="font-medium text-zinc-900">
+                      {lesson.name}
+                      {lesson.number === 1 ? <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand">Free preview</span> : null}
+                    </p>
+                    <p data-testid={`lesson-preview-${lesson.number}`} className={`text-sm text-zinc-500 ${lesson.number === 1 ? "leading-relaxed" : "line-clamp-2"}`}>
+                      {lesson.text}
+                    </p>
                   </div>
                 </li>
               ))}
             </ol>
-            <p className="mt-4 text-xs text-zinc-400">{course.creatorNote}</p>
+            <p className="mt-4 text-sm text-zinc-500">Lesson 1 is free to read here. The others open in full after you buy.</p>
+            <p className="mt-2 text-xs text-zinc-400">{course.creatorNote}</p>
           </CardBody>
         </Card>
 

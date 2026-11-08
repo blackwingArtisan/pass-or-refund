@@ -1,4 +1,5 @@
 import { Badge, type Tone } from "@/components/ui";
+import { learnerLineText } from "@/lib/course/contest-rules";
 import { lessonForItem, lessons, rubric } from "@/lib/course/content";
 import type { Attempt } from "@/lib/course/types";
 import type { Outcome } from "@/lib/grading/decide";
@@ -39,7 +40,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
   const run = attempt.runs[attempt.shownRun];
   const outcome = OUTCOME[attempt.outcome];
   const missed = run.items.filter((item) => item.verdict === "not_met");
-  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, item.text])));
+  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id)])));
 
   return (
     <div data-testid={`attempt-${attempt.number}`} className="space-y-5">
@@ -93,7 +94,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
               <ul className="divide-y divide-zinc-100">
                 {question.items.map((item) => {
                   const scored = run.items.find((i) => i.id === item.id);
-                  return scored ? <ItemRow key={item.id} item={scored} text={item.text} points={item.points} /> : null;
+                  return scored ? <ItemRow key={item.id} item={scored} text={learnerLineText(item.id)} points={item.points} /> : null;
                 })}
               </ul>
               {caps.map((cap) => (

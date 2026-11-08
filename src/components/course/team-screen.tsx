@@ -194,9 +194,15 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           </p>
         ) : null}
         {enrollment.refund?.refundId ? (
-          <p className="font-mono text-xs text-zinc-500">
-            Refund {enrollment.refund.refundId}, {enrollment.refund.refundStatus}
-            {enrollment.refund.viaDispute ? ", paid by accepting the dispute" : ""}
+          <p data-testid="team-refund-done" className={`rounded-lg px-3 py-2 text-sm ${enrollment.refund.refundStatus === "COMPLETED" ? "bg-emerald-50 text-emerald-900" : "bg-zinc-50 text-zinc-700"}`}>
+            <strong>
+              {enrollment.refund.refundStatus === "COMPLETED" ? "Refund issued" : "Refund sent to PayPal"}: {formatCents(enrollment.refund.refundedCents ?? enrollment.payment?.capturedCents ?? 0)} back to {enrollment.learnerName}
+              {enrollment.refund.viaDispute ? ", paid by accepting the dispute" : ""}.
+            </strong>{" "}
+            PayPal reports it {enrollment.refund.refundStatus}. <span className="font-mono text-xs">Refund {enrollment.refund.refundId}</span>{" "}
+            <Link href={`/learn/${enrollment.id}`} className="font-medium text-brand hover:underline">
+              See what the learner sees
+            </Link>
           </p>
         ) : null}
         <WebhookLines enrollment={enrollment} />

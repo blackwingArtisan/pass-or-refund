@@ -11,6 +11,7 @@ import { useTimeline } from "@/components/kit/use-timeline";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
+import { learnerLineText } from "@/lib/course/contest-rules";
 import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
 import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
@@ -211,7 +212,7 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
 
 /** The study list, one tick per missed item. The button only opens once each one is done. */
 function StudyChecklist({ enrollment, attempt, onTick, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onTick: (itemId: string) => void; onReviewed: () => void }) {
-  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, item.text])));
+  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id)])));
   const missed = missedItems(attempt);
   const ticked = enrollment.studyTicks ?? [];
   const left = missed.filter((item) => !ticked.includes(item.id)).length;
