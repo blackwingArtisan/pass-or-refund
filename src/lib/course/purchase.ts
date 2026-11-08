@@ -8,7 +8,7 @@ import { moneyFromMinor, toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import { singleton } from "@/lib/singleton";
 import { course, COURSE_PRICE_CENTS, CURRENCY } from "./content";
-import { createEnrollment, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
+import { createEnrollment, recoveredUnstartedFor, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
 import type { Enrollment, Payment } from "./types";
 import type { Order } from "@/lib/paypal/types";
 
@@ -48,6 +48,8 @@ export async function recoverPayment(enrollment: Enrollment): Promise<Enrollment
  * track of? Then they carry on with that one, and PayPal never sees a second payment.
  */
 export async function resumePurchase(learnerEmail: string, channel: string): Promise<Enrollment | null> {
+  const recovered = recoveredUnstartedFor(learnerEmail);
+  if (recovered) return recovered;
   for (const enrollment of unpaidFor(learnerEmail).slice(0, CHECKOUTS_TO_RECHECK)) {
     const orderId = enrollment.payment!.orderId;
     const order = await getPayPal().orders.get(orderId).catch(() => null);

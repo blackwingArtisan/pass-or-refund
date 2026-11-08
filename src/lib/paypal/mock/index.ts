@@ -194,6 +194,10 @@ export class MockPayPal implements PayPalApi {
   private pendingDeliveries = new Set<Promise<void>>();
   /** Events raised by the current operation; delivered only if it succeeds. */
   private outbox: T.WebhookEventEnvelope[] = [];
+  /** Dev knob: new refunds stay PENDING (as PayPal's ECHECK refunds do) until releaseHeldRefunds(). */
+  private refundsOnHold = false;
+  /** Dev knob: webhooks are recorded but never delivered, as when PayPal can't reach the app. */
+  private webhooksLost = false;
   private loadedMtime = 0;
   private readonly opts: Required<Omit<MockPayPalOptions, "persistFile">> & { persistFile?: string };
 
@@ -317,6 +321,7 @@ export class MockPayPal implements PayPalApi {
   }
 
   private deliver(event: T.WebhookEventEnvelope) {
+    if (this.webhooksLost) return;
     const delivery = (async () => {
       if (this.opts.webhookDelayMs) await sleep(this.opts.webhookDelayMs);
       for (const l of this.listeners) {
@@ -855,9 +860,11 @@ export class MockPayPal implements PayPalApi {
     const cur = c.amount.currency_code;
     rec.refundedMinor += amountMinor;
     const now = this.iso();
+    const held = this.refundsOnHold && !fromDispute;
     const refund: T.Refund = {
       id: mockIds.refund(),
-      status: "COMPLETED",
+      status: held ? "PENDING" : "COMPLETED",
+      ...(held ? { status_details: { reason: "ECHECK" } } : {}),
       amount,
       ...(body.invoice_id ? { invoice_id: body.invoice_id } : {}),
       ...(body.custom_id ? { custom_id: body.custom_id } : {}),
@@ -879,7 +886,7 @@ export class MockPayPal implements PayPalApi {
     const refundRec: RefundRecord = { refund, captureId };
     this.state.refunds[refund.id] = refundRec;
     rec.refundIds.push(refund.id);
-    c.status = rec.refundedMinor >= grossMinor ? "REFUNDED" : "PARTIALLY_REFUNDED";
+    if (!held) c.status = rec.refundedMinor >= grossMinor ? "REFUNDED" : "PARTIALLY_REFUNDED";
     c.update_time = now;
     c.links = this.captureLinks(rec);
     if (rec.orderId) this.touchOrder(rec.orderId);
@@ -895,8 +902,39 @@ export class MockPayPal implements PayPalApi {
       },
       rec.payerEmail,
     );
-    this.emit("PAYMENT.CAPTURE.REFUNDED", refund, `A ${amount.value} ${cur} capture payment was refunded`);
+    // A held refund has no money moved yet: PayPal sends PAYMENT.CAPTURE.REFUNDED when it settles.
+    if (!held) this.emit("PAYMENT.CAPTURE.REFUNDED", refund, `A ${amount.value} ${cur} capture payment was refunded`);
     return refundRec;
+  }
+
+  /** Dev helper: webhooks stop reaching the app (true) or reach it again (false). */
+  loseWebhooks(on: boolean) {
+    this.webhooksLost = on;
+  }
+
+  /** Dev helper: from now on, refunds stay PENDING until released (or not, with false). */
+  holdRefunds(on: boolean) {
+    this.refundsOnHold = on;
+  }
+
+  /** Dev helper: every PENDING refund settles now, and PayPal's REFUNDED webhook goes out for each. */
+  releaseHeldRefunds(): Promise<T.Refund[]> {
+    return this.io("dev.releaseRefunds", undefined, () =>
+      Object.values(this.state.refunds)
+        .filter((r) => r.refund.status === "PENDING")
+        .map(({ refund, captureId }) => {
+          const cap = this.state.captures[captureId];
+          refund.status = "COMPLETED";
+          delete refund.status_details;
+          refund.update_time = this.iso();
+          cap.capture.status = cap.refundedMinor >= toMinor(cap.capture.amount.value, cap.capture.amount.currency_code) ? "REFUNDED" : "PARTIALLY_REFUNDED";
+          cap.capture.update_time = refund.update_time;
+          cap.capture.links = this.captureLinks(cap);
+          if (cap.orderId) this.touchOrder(cap.orderId);
+          this.emit("PAYMENT.CAPTURE.REFUNDED", refund, `A ${refund.amount.value} ${refund.amount.currency_code} capture payment was refunded`);
+          return refund;
+        }),
+    );
   }
 
   // ───────────── Payouts v1 ─────────────
@@ -1519,6 +1557,8 @@ export class MockPayPal implements PayPalApi {
 
   reset() {
     this.state = emptyState();
+    this.refundsOnHold = false;
+    this.webhooksLost = false;
     this.save();
   }
 

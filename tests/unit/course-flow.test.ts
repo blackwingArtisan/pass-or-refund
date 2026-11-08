@@ -158,14 +158,15 @@ describe("refund", () => {
     await waitForStatus(id, "refunded");
   });
 
-  it("won't refund a capture that isn't complete", async () => {
+  it("records a refund paid outside the app from PayPal's webhook, and closes the waiting approval", async () => {
     const id = await failTwice();
     const approval = await waitForApproval(id);
-    const paypal = getPayPal();
     const captureId = requireEnrollment(id).payment!.captureId!;
-    await paypal.payments.refundCapture(captureId, undefined, { requestId: "already-refunded" });
-    getApprovals().decide(approval.id, "approved", "test");
-    await waitForStatus(id, "refund_blocked");
-    expect(requireEnrollment(id).refund?.refundId).toBeUndefined();
+    const outside = await getPayPal().payments.refundCapture(captureId, undefined, { requestId: "refunded-outside" });
+    await waitForStatus(id, "refunded");
+    expect(requireEnrollment(id).refund).toMatchObject({ refundId: outside.id, refundStatus: "COMPLETED", webhookStatus: "COMPLETED", captureStatus: "REFUNDED" });
+    expect(getApprovals().get(approval.id)).toMatchObject({ state: "denied", decidedBy: "PayPal" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(requireEnrollment(id).status).toBe("refunded");
   });
 });

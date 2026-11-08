@@ -22,9 +22,9 @@ describe("the creator's numbers", () => {
 });
 
 describe("what counts as the course's own on a shared PayPal account", () => {
-  it("keeps orders, captures and refunds, and drops the kit's other demos", () => {
-    for (const type of ["CHECKOUT.ORDER.APPROVED", "CHECKOUT.ORDER.COMPLETED", "PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.REFUNDED"]) expect(isCourseEvent(type)).toBe(true);
-    for (const type of ["PAYMENT.AUTHORIZATION.CREATED", "INVOICING.INVOICE.CREATED", "PAYMENT.PAYOUTSBATCH.SUCCESS", "CUSTOMER.DISPUTE.CREATED"]) expect(isCourseEvent(type)).toBe(false);
+  it("keeps orders, captures, refunds and disputes, and drops the kit's other demos", () => {
+    for (const type of ["CHECKOUT.ORDER.APPROVED", "CHECKOUT.ORDER.COMPLETED", "PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.REFUNDED", "CUSTOMER.DISPUTE.CREATED"]) expect(isCourseEvent(type)).toBe(true);
+    for (const type of ["PAYMENT.AUTHORIZATION.CREATED", "INVOICING.INVOICE.CREATED", "PAYMENT.PAYOUTSBATCH.SUCCESS"]) expect(isCourseEvent(type)).toBe(false);
   });
 
   it("shows this tab's own steps and course webhooks on a timeline", () => {
