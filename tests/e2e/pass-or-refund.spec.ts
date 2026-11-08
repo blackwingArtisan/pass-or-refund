@@ -3,7 +3,7 @@
  * sandbox (npm run test:e2e:sandbox), where PayPal's objects are read back directly.
  * `E2E_AI_MODE=live npx playwright test -c playwright.sandbox.config.ts -g "real AI"` is the paid run.
  */
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
@@ -20,6 +20,26 @@ const mode = async (request: APIRequestContext) => (await (await request.get("/a
 
 /** PayPal's webhooks reach the mock and the hosted site. A local sandbox server has no public address, so none arrive. */
 const webhooksArrive = async (request: APIRequestContext) => (await mode(request)) === "mock" || !!process.env.E2E_BASE_URL;
+
+/**
+ * PayPal sends the refund webhook within seconds most times, but a sandbox delivery can lag. Waits
+ * up to 3 minutes; if it never shows, prints what the server did with each refund webhook it got,
+ * so a failure says whether PayPal never delivered, the signature check refused it, or the app
+ * didn't tie it to the learner.
+ */
+async function refundWebhookShows(team: Locator, request: APIRequestContext, id: string) {
+  const started = Date.now();
+  try {
+    await expect(team.getByTestId("team-webhook")).toContainText(/PayPal's webhook confirmed the refund at \d{1,2}:\d{2}\s[AP]M/, { timeout: 180_000 });
+    console.log(`Refund webhook for ${id} showed after ${Math.round((Date.now() - started) / 1000)} s`);
+  } catch (e) {
+    const { payment, refund } = await enrollmentOf(request, id);
+    const { deliveries } = (await (await request.get("/api/paypal/webhook-trail")).json()) as { deliveries: { resourceId?: string; captureId?: string; eventType?: string }[] };
+    const ours = deliveries.filter((d) => [payment?.captureId, refund?.refundId].includes(d.resourceId) || d.captureId === payment?.captureId);
+    console.log("Webhook trail for", id, JSON.stringify({ captureId: payment?.captureId, refundId: refund?.refundId, ours, rejectedOrOther: deliveries.filter((d) => !d.eventType || d.eventType === "PAYMENT.CAPTURE.REFUNDED").slice(0, 10) }));
+    throw e;
+  }
+}
 
 /** A new address each time: the hosted suite keeps its data between runs, and a learner only gets one refund. */
 const newEmail = (name: string) => `${name.toLowerCase().replace(/\W+/g, ".")}.${Date.now()}@example.com`;
@@ -196,6 +216,7 @@ test.describe("mock-safe flows", () => {
   });
 
   test("fail twice, a person approves, PayPal refunds", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000); // real grading, and up to 3 minutes for PayPal's refund webhook
     const id = await buy(page, request, "Alex Rivera");
     const { payment } = await enrollmentOf(request, id);
     expect(payment).toMatchObject({ captureStatus: "COMPLETED", capturedCents: COURSE_PRICE_CENTS });
@@ -221,7 +242,7 @@ test.describe("mock-safe flows", () => {
 
     const team = await approveOnTeam(page, id);
     const hooks = await webhooksArrive(request);
-    if (hooks) await expect(team.getByTestId("team-webhook")).toContainText(/PayPal's webhook confirmed the refund at \d{1,2}:\d{2}\s[AP]M/, { timeout: 60_000 });
+    if (hooks) await refundWebhookShows(team, request, id);
     await team.getByTestId("learner-link").click();
     await expect(page.getByTestId("refund-issued")).toContainText("Refund issued, sorry we let you down", { timeout: 60_000 });
     if (hooks) await expect(page.getByTestId("refund-webhook")).toContainText(/PayPal.s webhook confirmed it at \d{1,2}:\d{2}\s[AP]M/, { timeout: 60_000 });

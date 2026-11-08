@@ -7,6 +7,7 @@ import { samples } from "@/lib/course/samples";
 import { enrollmentChannel, TEAM_CHANNEL } from "@/lib/course/scope";
 import { timeline } from "@/lib/events/bus";
 import { getMockPayPal, getPayPal } from "@/lib/paypal";
+import { webhookTrail } from "@/lib/paypal/webhook-trail";
 import { readyForNextAttempt } from "./course-helpers";
 
 const CHANNEL = "test";
@@ -38,9 +39,10 @@ const webhooksOn = (channel: string) => timeline.history({ channels: [channel] }
 afterEach(() => getMockPayPal()!.holdRefunds(false));
 
 describe("PayPal's webhooks settle the course's records", () => {
-  it("PAYMENT.CAPTURE.COMPLETED confirms the payment", async () => {
-    const { id } = await buy();
+  it("PAYMENT.CAPTURE.COMPLETED confirms the payment, and the delivery trail says which learner it settled", async () => {
+    const { id, payment } = await buy();
     await vi.waitFor(() => expect(requireEnrollment(id).payment?.webhookAt).toBeTruthy(), WAIT);
+    expect(webhookTrail().find((d) => d.resourceId === payment!.captureId)).toMatchObject({ eventType: "PAYMENT.CAPTURE.COMPLETED", outcome: "handled", enrollmentId: id });
   });
 
   it("PAYMENT.CAPTURE.COMPLETED enrolls a learner whose record missed the payment", async () => {
