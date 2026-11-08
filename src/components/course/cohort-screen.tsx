@@ -158,6 +158,11 @@ export function CohortScreen() {
           ) : null
         }
       />
+      {cohort?.sampleLearners && cohort.realLearners ? (
+        <p data-testid="cohort-drift" className="mb-4 text-sm text-zinc-600">
+          The creator&rsquo;s numbers on the home page use the {cohort.sampleLearners} made-up learners only. This page adds the {cohort.realLearners} real {cohort.realLearners === 1 ? "learner" : "learners"} who bought here, so its numbers move as people try the course.
+        </p>
+      ) : null}
       {error ? <p className="text-sm text-danger-700">{error}</p> : null}
       {!cohort && !error ? <SkeletonCard /> : null}
       {empty ? (

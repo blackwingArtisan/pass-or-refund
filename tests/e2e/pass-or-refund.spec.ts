@@ -272,6 +272,22 @@ test.describe("the story on the first screen", () => {
     await visitor.close();
   });
 
+  test("a mistyped address has a way back, lesson 1 reads in full before buying, and /cohort says why its numbers move", async ({ page, request }) => {
+    const missing = await page.goto("/nope");
+    expect(missing?.status()).toBe(404);
+    await expect(page.getByTestId("not-found")).toContainText("There's no page here");
+    await page.getByTestId("not-found").getByRole("link", { name: "The course" }).click();
+    await page.waitForURL(/\/course$/);
+    const first = page.getByTestId("lesson-preview-1").filter({ visible: true });
+    await expect(first).toBeVisible();
+    expect(await first.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("none");
+    await expect(page.getByText("Lesson 1 is free to read here.").filter({ visible: true })).toBeVisible();
+    await buy(page, request, "Drew Drift");
+    await attempt(page, "fail1", 1);
+    await page.goto("/cohort");
+    await expect(page.getByTestId("cohort-drift")).toContainText("made-up learners only");
+  });
+
   test("the brand font is on every screen, and webhook names wrap at their dots", async ({ page, request }) => {
     const id = await buy(page, request, "Fern Font");
     for (const path of ["/", "/course", `/learn/${id}`, "/learn/sample_pass", "/team", "/cohort", "/activity"]) {
@@ -380,6 +396,10 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("attempt-1").locator('[data-verdict="partial"], [data-verdict="met"]').first()).toBeVisible();
     await expect(page.getByTestId("study-list")).toBeVisible();
     await expect(page.getByTestId("fail-count")).toContainText("1 of 2");
+    // A learner reads each rubric line as a plain line: no note to the grader, no "she" without a name.
+    const lines = await page.getByTestId("attempt-1").innerText();
+    expect(lines).not.toMatch(/is partial|before she flips/);
+    expect(lines).toContain("heel to tip, before Lena flips");
     // Next keeps the course page mounted but hidden, so only the visible copy counts.
     await expect(page.getByTestId("guarantee").filter({ visible: true })).toBeVisible();
     await page.getByTestId("attempt-1").scrollIntoViewIfNeeded();
@@ -394,6 +414,8 @@ test.describe("mock-safe flows", () => {
     if (sandbox) expect((await readPayPalObjects(payment!.orderId, payment!.captureId!)).capture.status).toBe("COMPLETED");
 
     const team = await approveOnTeam(page, id);
+    await expect(team.getByTestId("team-refund-done")).toContainText(`Refund issued: $${PRICE} back to Alex Rivera.`, { timeout: 60_000 });
+    await expect(team.getByTestId("team-refund-done")).toContainText("PayPal reports it COMPLETED");
     const hooks = await webhooksArrive(request);
     if (hooks) await refundWebhookShows(team, request, id);
     await team.getByTestId("learner-link").click();
