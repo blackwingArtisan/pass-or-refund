@@ -26,7 +26,8 @@ const email = (name: string) => `${name.toLowerCase().replace(/\s+/g, ".")}.${Da
 
 /** Buys the course on the course page, with the server-side test card on the sandbox. */
 async function buyOffCamera(page: Page, name: string, sandbox: boolean) {
-  await page.goto("/course");
+  // ?test-card=1 shows the server-side test card button, which only tests and these side learners use.
+  await page.goto(sandbox ? "/course?test-card=1" : "/course");
   await page.getByTestId("learner-name").filter({ visible: true }).fill(name);
   await page.getByTestId("learner-email").filter({ visible: true }).fill(email(name));
   if (sandbox) await page.getByTestId("sandbox-test-card").click();
@@ -119,6 +120,9 @@ test("demo", async ({ page, request, browser, baseURL }) => {
       console.log(`[demo] PayPal window failed, paying with the server-side test card: ${(e as Error).message.split("\n")[0]}`);
       paypalWindow = false;
       for (const p of page.context().pages()) if (p !== page) await p.close().catch(() => undefined);
+      await page.goto("/course?test-card=1");
+      await page.getByTestId("learner-name").filter({ visible: true }).fill("Jordan Lee");
+      await page.getByTestId("learner-email").filter({ visible: true }).fill(email("Jordan Lee"));
       await page.getByTestId("sandbox-test-card").click();
       return undefined;
     });
