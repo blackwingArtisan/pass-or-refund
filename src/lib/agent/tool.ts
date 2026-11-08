@@ -38,6 +38,8 @@ export interface ToolImpact {
 
 export interface AgentTool<I = unknown, O = unknown> {
   name: string;
+  /** What a person reads instead of the name, e.g. "Every refund" in "Every refund needs a person's approval." */
+  label?: string;
   description: string;
   source: ToolSource;
   risk: ToolRisk;
@@ -54,6 +56,7 @@ export interface AgentTool<I = unknown, O = unknown> {
 
 export function defineTool<S extends z.ZodType, O>(def: {
   name: string;
+  label?: string;
   description: string;
   risk: ToolRisk;
   source?: ToolSource;
@@ -67,6 +70,7 @@ export function defineTool<S extends z.ZodType, O>(def: {
   delete json.$schema;
   return {
     name: def.name,
+    label: def.label,
     description: def.description,
     source: def.source ?? "app",
     risk: def.risk,

@@ -62,8 +62,8 @@ export async function resumePurchase(learnerEmail: string, channel: string): Pro
 }
 
 /** The amount comes from the course, never the browser. */
-export async function startPurchase(learnerName: string, learnerEmail: string): Promise<{ enrollment: Enrollment; orderId: string }> {
-  const created = createEnrollment(learnerName, learnerEmail);
+export async function startPurchase(learnerName: string, learnerEmail: string, opts: { testRun?: boolean } = {}): Promise<{ enrollment: Enrollment; orderId: string }> {
+  const created = createEnrollment(learnerName, learnerEmail, opts);
   const order = await getPayPal().orders.create(
     {
       intent: "CAPTURE",

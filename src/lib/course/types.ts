@@ -135,6 +135,8 @@ export interface Enrollment {
   gapSkippedAfter?: number;
   refund?: Refund;
   dispute?: CourseDispute;
+  /** Bought by a browser test suite. Kept off the course team's list unless the viewer is a test run too. */
+  testRun?: boolean;
 }
 
 export interface PendingApproval {
@@ -155,7 +157,8 @@ export interface GuaranteeDecision {
   checks: RuleCheck[];
 }
 
-export interface EnrollmentView extends Enrollment {
+/** What the API sends. The learner's email stays on the server. */
+export interface EnrollmentView extends Omit<Enrollment, "learnerEmail"> {
   approval: PendingApproval | null;
   completedFails: number;
   guaranteeVoid: boolean;

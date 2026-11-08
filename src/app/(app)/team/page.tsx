@@ -1,5 +1,10 @@
+import { TeamGate } from "@/components/course/team-gate";
 import { TeamScreen } from "@/components/course/team-screen";
 
 export default function TeamPage() {
-  return <TeamScreen />;
+  return (
+    <TeamGate title="Course team">
+      <TeamScreen />
+    </TeamGate>
+  );
 }

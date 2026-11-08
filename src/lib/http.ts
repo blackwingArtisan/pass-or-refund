@@ -88,3 +88,10 @@ export async function readJson<S extends z.ZodType>(req: Request, schema: S): Pr
 }
 
 export const moneyValue = /^\d+(\.\d{1,2})?$/;
+
+const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
+
+/** A copy with every email address replaced, for anything that leaves the server for a screen. */
+export function withoutEmails<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value ?? null).replace(EMAIL, "(email hidden)")) as T;
+}

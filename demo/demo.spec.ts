@@ -61,6 +61,10 @@ test("demo", async ({ page, request }) => {
   const status = await (await request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
   let popup: Page | undefined;
+  // The course team's view needs the passcode from the home page's For judges box. Sign in off camera.
+  const home = await (await page.request.get("/")).text();
+  const passcode = /data-testid="team-passcode-shown"[^>]*>([^<]+)</.exec(home)?.[1] ?? "";
+  if (!(await page.request.post("/api/team/session", { data: { passcode } })).ok()) throw new Error("The home page's team passcode didn't open /team");
 
   // 1. The guarantee beside the buy button
   // ?test-card=1 keeps the server-side test card as a fallback, if PayPal's window fails to load.

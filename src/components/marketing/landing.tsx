@@ -1,8 +1,9 @@
-import { ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { creatorCase } from "@/lib/course/creator-case";
 import { formatCents } from "@/lib/course/policy";
+import { teamPasscode } from "@/lib/course/team-access";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
@@ -51,6 +52,22 @@ function CreatorNumbers() {
       <p className="mt-3 text-xs leading-relaxed text-zinc-500">
         The sample cohort is {c.learners} made-up learners graded on the real rubric, so the rate is illustrative. Before PayPal&rsquo;s fees. Your own learners replace it on{" "}
         <a href="/cohort" className="underline">the cohort page</a>.
+      </p>
+    </div>
+  );
+}
+
+/** Judges play both sides: the learner on /course and the course team behind this passcode. */
+function ForJudges() {
+  return (
+    <div id="judges" data-testid="for-judges" className="mt-6 max-w-xl rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm text-zinc-700">
+      <p className="flex items-center gap-2 font-semibold text-zinc-900">
+        <KeyRound className="size-4 text-brand" /> For judges
+      </p>
+      <p className="mt-1">
+        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team on{" "}
+        <a href="/team" className="font-medium text-brand underline">/team</a>. The team passcode is{" "}
+        <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code>.
       </p>
     </div>
   );
@@ -164,6 +181,7 @@ export function Hero() {
           <p className="mt-6 flex items-center gap-2 text-sm text-zinc-500">
             <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
+          <ForJudges />
         </div>
         <CreatorNumbers />
       </div>

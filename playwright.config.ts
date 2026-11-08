@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { testRunState } from "./tests/e2e/test-run";
 
 /**
  * End-to-end tests (npm run test:e2e). Builds and starts the app in PayPal MOCK mode with its own
@@ -19,6 +20,7 @@ export default defineConfig({
   outputDir: "test-results/mock",
   use: {
     baseURL: `http://localhost:${PORT}`,
+    storageState: testRunState(`http://localhost:${PORT}`),
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
   },
