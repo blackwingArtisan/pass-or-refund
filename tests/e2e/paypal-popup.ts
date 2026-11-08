@@ -2,7 +2,7 @@
  * Pays in PayPal's own checkout window on the sandbox: the real v6 button opens PayPal's popup,
  * and PayPal's guest checkout takes the public sandbox test card. No buyer login needed.
  */
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { SANDBOX_TEST_CARD } from "../../src/lib/paypal/test-card";
 
 export interface PopupOptions {
@@ -16,10 +16,17 @@ export interface PopupOptions {
   onFilled?: (popup: Page) => Promise<void>;
 }
 
+/** PayPal's button renders disabled until its session is ready, and a click before then does nothing. */
+export async function paypalButtonReady(page: Page) {
+  const button = page.getByTestId("paypal-v6-button").locator("paypal-button");
+  await button.waitFor({ timeout: 60_000 });
+  await expect(button).not.toHaveAttribute("disabled", { timeout: 60_000 });
+  return button;
+}
+
 export async function payInPayPalWindow(page: Page, opts: PopupOptions = {}): Promise<Page> {
   const delay = opts.typeDelayMs ?? 0;
-  const button = page.getByTestId("paypal-v6-button").locator("paypal-button, button, [role=button]").first();
-  await button.waitFor({ timeout: 60_000 });
+  const button = await paypalButtonReady(page);
   const opened = page.waitForEvent("popup", { timeout: 30_000 });
   await button.click();
   const popup = await opened;
@@ -69,9 +76,21 @@ export async function payInPayPalWindow(page: Page, opts: PopupOptions = {}): Pr
     if (await saveInfo.isChecked().catch(() => false)) await saveInfo.dispatchEvent("click");
     await popup.getByTestId("submit-button").click();
   }
-  // On the sandbox's made-up address PayPal may ask to confirm it: keep the address as entered.
+  // After paying PayPal may ask one or two things before it finishes: to confirm the sandbox's
+  // made-up address (keep it as entered), and on a phone, to make an account (stay a guest).
   const keepAddress = popup.getByRole("button", { name: "Continue", exact: true });
-  await Promise.race([closed.catch(() => undefined), keepAddress.waitFor({ timeout: 30_000 }).then(() => keepAddress.click()).catch(() => undefined)]);
+  const stayGuest = popup.getByRole("button", { name: "Continue as Guest" });
+  const answer = async (button: typeof keepAddress) => {
+    await button.waitFor({ timeout: 30_000 });
+    await button.click();
+  };
+  for (let asked = 0; asked < 2 && !popup.isClosed(); asked++) {
+    const next = await Promise.race([closed.then(() => "closed").catch(() => "closed"), answer(keepAddress).then(() => "address"), answer(stayGuest).then(() => "guest")]).catch(() => "nothing");
+    if (next === "closed" || next === "nothing") break;
+  }
+  // Usually PayPal's window tells the page and closes. One of PayPal's checkout pages takes the
+  // payment and stays on "Thanks for using PayPal" instead; then the page's own check finds the
+  // payment at PayPal and closes the window. Either way the window must close by itself.
   await closed.catch(async (e) => {
     await popup.screenshot({ path: "test-results/paypal-window-failure.png", fullPage: true }).catch(() => undefined);
     throw e;

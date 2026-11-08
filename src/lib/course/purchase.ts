@@ -6,6 +6,7 @@ import { Guard } from "@/lib/agent/guard";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
+import { singleton } from "@/lib/singleton";
 import { course, COURSE_PRICE_CENTS, CURRENCY } from "./content";
 import { createEnrollment, recoveredUnstartedFor, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
 import type { Enrollment, Payment } from "./types";
@@ -34,8 +35,19 @@ function fromCompletedOrder(enrollment: Enrollment, order: Order): Enrollment | 
   return recordPayment(enrollment, { orderId: order.id, orderStatus: order.status, captureId: capture.id, captureStatus: capture.status, capturedCents: cents, paidAt: new Date().toISOString(), payerId: payerIdOf(order), payerEmail: payerEmailOf(order), recovered: true });
 }
 
+/** PayPal's window and the page's own check can both finish one purchase at once: they share the work. */
+const finishing = singleton("course:finishing-purchase", () => new Map<string, Promise<Enrollment>>());
+
 /** Called when anyone looks at an unpaid enrollment, so a reload is enough to get a learner unstuck. */
 export async function recoverPayment(enrollment: Enrollment): Promise<Enrollment> {
+  // A capture is still on its way back from PayPal: that's this purchase finishing, not one we lost.
+  const running = finishing.get(enrollment.id);
+  if (running) return running.catch(() => requireEnrollment(enrollment.id));
+  return paidAtPayPal(enrollment);
+}
+
+/** The enrollment rebuilt from PayPal's order if PayPal took the money, else as it was. */
+async function paidAtPayPal(enrollment: Enrollment): Promise<Enrollment> {
   const orderId = enrollment.payment?.orderId;
   if (enrollment.status !== "unpaid" || !orderId) return enrollment;
   const order = await getPayPal().orders.get(orderId).catch(() => null);
@@ -73,11 +85,36 @@ export async function startPurchase(learnerName: string, learnerEmail: string, o
   return { enrollment: saveEnrollment({ ...created, payment: { orderId: order.id, orderStatus: order.status } }), orderId: order.id };
 }
 
-export async function completePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
+
+export function completePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
+  const running = finishing.get(id);
+  if (running) return running;
+  const work = capturePurchase(id, orderId, channel).finally(() => finishing.delete(id));
+  finishing.set(id, work);
+  return work;
+}
+
+/**
+ * Asked by the course page while PayPal's window is open. If the buyer approved in PayPal but the
+ * window never told the page (it happens with one of PayPal's checkout pages), PayPal still says
+ * APPROVED, so the purchase finishes here, through the same Guard. Nothing is captured before then.
+ */
+export async function checkCheckout(id: string, channel: string): Promise<Enrollment> {
+  const enrollment = requireEnrollment(id);
+  const orderId = enrollment.payment?.orderId;
+  if (enrollment.status !== "unpaid" || !orderId) return enrollment;
+  const order = await getPayPal().orders.get(orderId).catch(() => null);
+  if (!order) return enrollment;
+  const paid = fromCompletedOrder(enrollment, order);
+  if (paid) return paid;
+  return order.status === "APPROVED" ? completePurchase(id, orderId, channel) : enrollment;
+}
+
+async function capturePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
   const enrollment = requireEnrollment(id);
   if (enrollment.payment?.orderId !== orderId) throw new HttpError(409, "That PayPal order doesn't belong to this purchase.", "conflict");
   if (enrollment.status !== "unpaid") return enrollment;
-  const recovered = await recoverPayment(enrollment);
+  const recovered = await paidAtPayPal(enrollment);
   if (recovered.status !== "unpaid") return recovered;
 
   const guard = new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy });
