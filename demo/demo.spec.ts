@@ -136,7 +136,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   }
   await page.waitForURL(/\/learn\/en_/, { timeout: 90_000 });
   await page.getByTestId("submit-attempt").waitFor();
-  cuts.resume();
+  if (paypalWindow) cuts.resume(); // after PayPal's window; otherwise the main video never stopped
   await caption(page, "Paid: PayPal captured $49.00.", { ms: 2200 });
   beat("bought");
 
