@@ -127,7 +127,9 @@ export class DemoCuts {
   }
   resume() {
     if (!this.paused) return;
-    this.keptFrom = this.now;
+    // A pause keeps a moment past itself; don't show that moment twice.
+    const lastMain = this.parts.filter((p) => p.src === "main").at(-1)?.to ?? 0;
+    this.keptFrom = Math.max(this.now, lastMain);
     this.paused = false;
   }
   /** Drops the main video from here, plays another recording whole, then picks up where resume() is called. */
@@ -139,7 +141,12 @@ export class DemoCuts {
   /** Drops the main video from here and plays these stretches of another recording; resume() picks the main one up again. */
   clips(src: string, stretches: { from: number; to: number }[]) {
     if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
-    for (const { from, to } of stretches) this.parts.push({ src, from: Math.max(0, from), to });
+    // Stretches that touch or overlap play once, as one.
+    let last: { src: string; from: number; to?: number } | undefined;
+    for (const { from, to } of [...stretches].sort((a, b) => a.from - b.from)) {
+      if (last && from <= last.to!) last.to = Math.max(last.to!, to);
+      else this.parts.push((last = { src, from: Math.max(0, from), to }));
+    }
     this.paused = true;
   }
   /** How long the edited cut runs so far, counting the main video up to now. */
