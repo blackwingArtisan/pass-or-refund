@@ -8,6 +8,7 @@ import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
+import { testRunState } from "./test-run";
 import { payInPayPalWindow, paypalButtonReady } from "./paypal-popup";
 import { captureBehindTheApp, readPayPalObjects, readRefunds, refundBehindTheApp } from "./paypal-reread";
 
@@ -248,6 +249,27 @@ test.describe("the story on the first screen", () => {
     expect(sample).toMatchObject({ status: "passed" });
     expect(sample.payment).toBeUndefined();
     await page.getByTestId("certificate").screenshot({ path: "screenshots/sample-certificate.png" });
+  });
+
+  test("prepared answers stay behind the Judge shortcuts switch until a judge turns it on", async ({ browser, request }) => {
+    // A visitor with no shortcuts saved: only the test-run cookie.
+    const visitor = await browser.newContext({ storageState: { cookies: testRunState(test.info().project.use.baseURL!).cookies, origins: [] } });
+    const page = await visitor.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("for-judges")).toContainText("Judge shortcuts");
+    await buy(page, request, "Juno Judge");
+    const toggle = page.getByTestId("judge-toggle");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
+    await toggle.click();
+    await expect(page.getByTestId("sample-buttons")).toContainText("Fill all four answers with a prepared example");
+    await page.getByTestId("sample-fail1").click();
+    await expect(page.getByTestId("answer-q1")).not.toHaveValue("");
+    await page.reload();
+    await expect(page.getByTestId("judge-toggle")).toHaveAttribute("aria-checked", "true");
+    await page.getByTestId("judge-toggle").click();
+    await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
+    await visitor.close();
   });
 
   test("the brand font is on every screen, and webhook names wrap at their dots", async ({ page, request }) => {

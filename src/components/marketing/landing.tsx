@@ -68,7 +68,7 @@ function ForJudges() {
       <p className="mt-1">
         Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team on{" "}
         <a href="/team" className="font-medium text-brand underline">/team</a>. The team passcode is{" "}
-        <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code>.
+        <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code>. To skip the typing, turn on <span className="font-medium text-zinc-900">Judge shortcuts</span> above the final check and pick a prepared answer.
       </p>
     </div>
   );

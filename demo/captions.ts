@@ -111,23 +111,51 @@ export class DemoCuts {
   private readonly start = Date.now();
   readonly parts: { src: string; from: number; to?: number }[] = [];
   private keptFrom = 0;
+  private paused: boolean;
+  /** `paused` starts with nothing kept, for setup that happens before the story does. */
+  constructor(opts: { paused?: boolean } = {}) {
+    this.paused = opts.paused ?? false;
+  }
   private get now() {
     return (Date.now() - this.start) / 1000;
   }
   /** Stops keeping the main video here; `keep` seconds of what follows stay in. */
   pause(keep = 1.2) {
+    if (this.paused) return;
     this.parts.push({ src: "main", from: this.keptFrom, to: this.now + keep });
+    this.paused = true;
   }
   resume() {
-    this.keptFrom = this.now;
+    if (!this.paused) return;
+    // A pause keeps a moment past itself; don't show that moment twice.
+    const lastMain = this.parts.filter((p) => p.src === "main").at(-1)?.to ?? 0;
+    this.keptFrom = Math.max(this.now, lastMain);
+    this.paused = false;
   }
   /** Drops the main video from here, plays another recording whole, then picks up where resume() is called. */
   insert(src: string) {
-    this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
+    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
     this.parts.push({ src, from: 0 });
+    this.paused = true;
+  }
+  /** Drops the main video from here and plays these stretches of another recording; resume() picks the main one up again. */
+  clips(src: string, stretches: { from: number; to: number }[]) {
+    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
+    // Stretches that touch or overlap play once, as one.
+    let last: { src: string; from: number; to?: number } | undefined;
+    for (const { from, to } of [...stretches].sort((a, b) => a.from - b.from)) {
+      if (last && from <= last.to!) last.to = Math.max(last.to!, to);
+      else this.parts.push((last = { src, from: Math.max(0, from), to }));
+    }
+    this.paused = true;
+  }
+  /** How long the edited cut runs so far, counting the main video up to now. */
+  get editedSeconds() {
+    const kept = this.parts.reduce((sum, p) => sum + ((p.to ?? p.from) - p.from), 0);
+    return Math.round(kept + (this.paused ? 0 : this.now - this.keptFrom));
   }
   finish() {
-    this.parts.push({ src: "main", from: this.keptFrom });
+    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom });
     return this.parts;
   }
 }
