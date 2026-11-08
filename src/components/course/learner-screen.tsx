@@ -18,15 +18,16 @@ import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
+import { JudgeToggle, useJudgeMode } from "./judge-mode";
 import { Guarantee } from "./guarantee";
 import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
 const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
-  { id: "fail1", label: "Weak answers" },
+  { id: "fail1", label: "Weak" },
   { id: "fail2", label: "Better, still weak" },
-  { id: "pass", label: "Strong answers" },
-  { id: "borderline", label: "Borderline answers" },
-  { id: "inject", label: "Try to trick the grader" },
+  { id: "pass", label: "Strong" },
+  { id: "borderline", label: "Borderline" },
+  { id: "inject", label: "Tries to trick the grader" },
 ];
 
 /** 402 and 503: the grader is out of credit or down. They stay on screen beside the answers. */
@@ -63,18 +64,26 @@ function Lessons() {
 
 function Quiz({ attemptNumber, grading, busy, problem, onSubmit }: { attemptNumber: number; grading: boolean; busy: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState(blankAnswers);
+  const [judge, setJudge] = useJudgeMode();
   const nothingWritten = Object.values(answers).every((a) => a.trim() === "");
   return (
     <Card id="final-check">
       <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={`Four questions, 25 points each. Write in your own words. Pass mark ${course.passMark}.`} />
       <CardBody className="space-y-5">
-        <div data-testid="sample-buttons" className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2">
-          <span className="text-xs font-medium text-zinc-500">Demo answers:</span>
-          {SAMPLE_BUTTONS.map(({ id, label }) => (
-            <Button key={id} size="sm" variant="ghost" onClick={() => setAnswers(samples[id])} data-testid={`sample-${id}`} disabled={grading}>
-              {label}
-            </Button>
-          ))}
+        <div className="space-y-2">
+          <JudgeToggle on={judge} onChange={setJudge} />
+          {judge ? (
+            <div data-testid="sample-buttons" className="rounded-lg bg-zinc-50 px-3 py-2.5">
+              <p className="text-xs text-zinc-600">Fill all four answers with a prepared example, then submit it or edit it first.</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                {SAMPLE_BUTTONS.map(({ id, label }) => (
+                  <Button key={id} size="sm" variant="secondary" onClick={() => setAnswers(samples[id])} data-testid={`sample-${id}`} disabled={grading} className={id === "inject" ? "col-span-2" : undefined}>
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         {rubric.questions.map((question, index) => (
           <Field key={question.id} label={`Question ${index + 1}`} hint={question.text} htmlFor={question.id}>

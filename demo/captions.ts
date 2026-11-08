@@ -111,20 +111,35 @@ export class DemoCuts {
   private readonly start = Date.now();
   readonly parts: { src: string; from: number; to?: number }[] = [];
   private keptFrom = 0;
+  private paused = false;
   private get now() {
     return (Date.now() - this.start) / 1000;
   }
   /** Stops keeping the main video here; `keep` seconds of what follows stay in. */
   pause(keep = 1.2) {
     this.parts.push({ src: "main", from: this.keptFrom, to: this.now + keep });
+    this.paused = true;
   }
   resume() {
     this.keptFrom = this.now;
+    this.paused = false;
   }
   /** Drops the main video from here, plays another recording whole, then picks up where resume() is called. */
   insert(src: string) {
     this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
     this.parts.push({ src, from: 0 });
+    this.paused = true;
+  }
+  /** Drops the main video from here and plays these stretches of another recording; resume() picks the main one up again. */
+  clips(src: string, stretches: { from: number; to: number }[]) {
+    this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
+    for (const { from, to } of stretches) this.parts.push({ src, from: Math.max(0, from), to });
+    this.paused = true;
+  }
+  /** How long the edited cut runs so far, counting the main video up to now. */
+  get editedSeconds() {
+    const kept = this.parts.reduce((sum, p) => sum + ((p.to ?? p.from) - p.from), 0);
+    return Math.round(kept + (this.paused ? 0 : this.now - this.keptFrom));
   }
   finish() {
     this.parts.push({ src: "main", from: this.keptFrom });
