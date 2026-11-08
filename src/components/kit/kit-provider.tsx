@@ -16,10 +16,13 @@ export interface KitStatus {
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    readonly body: { error?: { type?: string; name?: string; message?: string; issue?: string; debug_id?: string } },
+    readonly body: { error?: { type?: string; name?: string; message?: string; issue?: string; debug_id?: string; retryAfterSeconds?: number } },
   ) {
-    super(body.error?.issue ? `${body.error.message}` : (body.error?.message ?? `Request failed (${status})`));
+    super(body.error?.issue ? `${body.error.message}` : (body.error?.message ?? "Something went wrong. Please try again."));
     this.name = "ApiError";
+  }
+  get retryAfterSeconds() {
+    return this.status === 429 ? Math.max(1, Math.ceil(this.body.error?.retryAfterSeconds ?? 60)) : undefined;
   }
   get debugId() {
     return this.body.error?.debug_id;

@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { cn } from "../ui/cn";
 import { useKit } from "../kit/kit-provider";
+import { showError } from "../error-toast";
 import { useToast } from "../toast";
 
 /**
@@ -48,7 +49,7 @@ export function ApprovalPrompt({
       onDecided?.(decision);
       toast({ title: decision === "approved" ? "Approved" : "Declined", description: summary, variant: decision === "approved" ? "success" : "warning" });
     } catch (e) {
-      toast({ title: "Could not record decision", description: (e as Error).message, variant: "error" });
+      showError(toast, "Could not record decision", e);
       setBusy(null);
     }
   }

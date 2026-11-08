@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { cn } from "./ui/cn";
 
@@ -10,9 +10,12 @@ interface Toast {
   title: string;
   description?: string;
   variant: Variant;
+  /** Shows "Try again in Ns", ticks down, and clears the toast at zero. */
+  countdownSeconds?: number;
 }
+type ToastInput = Omit<Toast, "id" | "variant"> & { variant?: Variant; durationMs?: number };
 
-const ToastContext = createContext<{ toast: (t: Omit<Toast, "id" | "variant"> & { variant?: Variant; durationMs?: number }) => void } | null>(null);
+const ToastContext = createContext<{ toast: (t: ToastInput) => void } | null>(null);
 
 const ICON = { success: CheckCircle2, error: XCircle, info: Info, warning: AlertTriangle };
 const TONE = { success: "text-emerald-600", error: "text-red-600", info: "text-brand", warning: "text-amber-600" };
@@ -22,10 +25,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   const toast = useCallback(
-    ({ durationMs = 4500, variant = "info", ...t }: Omit<Toast, "id" | "variant"> & { variant?: Variant; durationMs?: number }) => {
+    ({ durationMs, variant = "info", ...t }: ToastInput) => {
       const id = Date.now() + Math.random();
       setToasts((prev) => [...prev.slice(-3), { ...t, variant, id }]);
-      setTimeout(() => dismiss(id), durationMs);
+      // Errors and countdowns stay until dismissed (countdowns clear themselves at zero).
+      const stays = t.countdownSeconds !== undefined || variant === "error";
+      if (durationMs !== undefined || !stays) setTimeout(() => dismiss(id), durationMs ?? 4500);
     },
     [dismiss],
   );
@@ -42,6 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-zinc-900">{t.title}</p>
                 {t.description ? <p className="mt-0.5 break-words text-sm text-zinc-500">{t.description}</p> : null}
+                {t.countdownSeconds !== undefined ? <Countdown seconds={t.countdownSeconds} onDone={() => dismiss(t.id)} /> : null}
               </div>
               <button onClick={() => dismiss(t.id)} className="text-zinc-400 hover:text-zinc-600" aria-label="Dismiss">
                 <X className="size-4" />
@@ -51,6 +57,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         })}
       </div>
     </ToastContext.Provider>
+  );
+}
+
+function Countdown({ seconds, onDone }: { seconds: number; onDone: () => void }) {
+  const [left, setLeft] = useState(seconds);
+  const done = useRef(onDone);
+  useEffect(() => {
+    done.current = onDone;
+  });
+  useEffect(() => {
+    if (left <= 0) {
+      done.current();
+      return;
+    }
+    const timer = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [left]);
+  return (
+    <p className="mt-1 text-sm font-medium text-zinc-700" data-testid="busy-countdown">
+      Try again in {left}s
+    </p>
   );
 }
 

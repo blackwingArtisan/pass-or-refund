@@ -1,5 +1,6 @@
 "use client";
 
+import { retryAfterOf, showError } from "@/components/error-toast";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Award, BookOpenCheck, CircleAlert, Clock, Send, ShieldCheck, TimerReset } from "lucide-react";
@@ -58,8 +59,9 @@ function Lessons() {
   );
 }
 
-function Quiz({ attemptNumber, grading, problem, onSubmit }: { attemptNumber: number; grading: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
+function Quiz({ attemptNumber, grading, busy, problem, onSubmit }: { attemptNumber: number; grading: boolean; busy: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState(blankAnswers);
+  const nothingWritten = Object.values(answers).every((a) => a.trim() === "");
   return (
     <Card id="final-check">
       <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={`Four questions, 25 points each. Write in your own words. Pass mark ${course.passMark}.`} />
@@ -85,15 +87,18 @@ function Quiz({ attemptNumber, grading, problem, onSubmit }: { attemptNumber: nu
             />
           </Field>
         ))}
-        {everyQuestionAnswered(answers) ? null : <p className="text-sm text-zinc-500">An attempt with a blank answer can&rsquo;t count toward a refund.</p>}
+        {nothingWritten || everyQuestionAnswered(answers) ? null : <p className="text-sm text-zinc-500">An attempt with a blank answer can&rsquo;t count toward a refund.</p>}
         {problem ? (
           <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="grading-unavailable">
             {problem}
           </Notice>
         ) : null}
-        <Button icon={<Send className="size-4" />} loading={grading} onClick={() => onSubmit(answers)} data-testid="submit-attempt">
-          {grading ? "Grading your answers" : "Submit for grading"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button icon={<Send className="size-4" />} loading={grading} disabled={busy || nothingWritten} onClick={() => onSubmit(answers)} data-testid="submit-attempt" className="select-none">
+            {grading ? "Grading your answers" : "Submit for grading"}
+          </Button>
+          {busy ? <span className="text-sm text-amber-700" data-testid="grader-busy">The grader is busy. Submit opens again when the wait ends.</span> : nothingWritten ? <span className="text-sm text-zinc-500">Write an answer to submit.</span> : null}
+        </div>
       </CardBody>
     </Card>
   );
@@ -238,6 +243,11 @@ export function LearnerScreen({ id }: { id: string }) {
   const [missing, setMissing] = useState(false);
   const [grading, setGrading] = useState(false);
   const [gradingProblem, setGradingProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const setBusyFor = useCallback((seconds: number) => {
+    setBusy(true);
+    setTimeout(() => setBusy(false), seconds * 1000);
+  }, []);
   const url = `/api/enrollments/${id}`;
   const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
   const { status, refund } = enrollment ?? {};
@@ -266,7 +276,11 @@ export function LearnerScreen({ id }: { id: string }) {
       setEnrollment(await kitFetch<EnrollmentView>(`${url}/attempts`, { json: { answers } }));
     } catch (e) {
       if (GRADER_OUTAGES.includes((e as ApiError).status)) setGradingProblem((e as Error).message);
-      else toast({ title: "Your attempt wasn't graded", description: (e as Error).message, variant: "error" });
+      else if (retryAfterOf(e)) {
+        const wait = retryAfterOf(e)!;
+        toast({ title: "The grader is busy", description: "Your answers are still here.", variant: "warning", countdownSeconds: wait });
+        setBusyFor(wait);
+      } else showError(toast, "Your attempt wasn't graded", e);
     } finally {
       setGrading(false);
     }
@@ -276,7 +290,7 @@ export function LearnerScreen({ id }: { id: string }) {
     try {
       setEnrollment(await kitFetch<EnrollmentView>(`${url}/${path}`, { json }));
     } catch (e) {
-      toast({ title: "That didn't save", description: (e as Error).message, variant: "error" });
+      showError(toast, "That didn't save", e);
     }
   }
 
@@ -347,7 +361,7 @@ export function LearnerScreen({ id }: { id: string }) {
 
           {canAttempt ? <Lessons /> : null}
           {canAttempt && enrollment.nextAttemptAt ? <NextAttempt opensAt={enrollment.nextAttemptAt} attemptNumber={enrollment.attempts.length + 1} onSkip={() => update("skip-wait", {})} /> : null}
-          {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} problem={gradingProblem} onSubmit={submit} /> : null}
+          {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} busy={busy} problem={gradingProblem} onSubmit={submit} /> : null}
         </div>
         <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
           {/* The feed holds everyone's payments, which would contradict "PayPal hasn't taken any money". */}
