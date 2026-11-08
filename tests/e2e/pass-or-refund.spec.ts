@@ -3,6 +3,7 @@
  * sandbox (npm run test:e2e:sandbox), where PayPal's objects are read back directly.
  * `E2E_AI_MODE=live npx playwright test -c playwright.sandbox.config.ts -g "real AI"` is the paid run.
  */
+import { createHash } from "node:crypto";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
@@ -617,6 +618,38 @@ test.describe("mock-safe flows", () => {
     expect(status).toBe("active");
     expect(refund).toBeUndefined();
     expect(guarantee.due).toBe(false);
+  });
+
+  test("a buyer checks the receipt's rubric fingerprint against the public rubric: matches, or changed since they bought", { tag: "@live" }, async ({ page, request }) => {
+    await page.goto("/course");
+    await page.getByTestId("read-rubric").first().click();
+    await expect(page).toHaveURL(/\/rubric$/);
+    const published = (await page.getByTestId("public-rubric-fingerprint").innerText()).replace(/\s/g, "");
+    expect(published).toMatch(/^[0-9a-f]{12}$/);
+    expect(await page.getByTestId("public-rubric-question").count()).toBe(4);
+    // Anyone can hash the download and get the same fingerprint.
+    const bytes = await (await request.get("/api/rubric/v1.json")).body();
+    expect(createHash("sha256").update(bytes).digest("hex").slice(0, 12)).toBe(published);
+
+    await buy(page, request, "Fay Fingerprint");
+    const receipt = page.getByTestId("receipt");
+    const bought = (await receipt.getByTestId("rubric-fingerprint").innerText()).replace(/\s/g, "");
+    // Next streams the check in; while it swaps in, a hidden copy sits outside the page's main area.
+    const checked = page.getByRole("main").getByTestId("fingerprint-check");
+    const verdict = checked.getByTestId("fingerprint-verdict");
+    await receipt.getByTestId("check-fingerprint").click();
+    await expect(verdict).toHaveText("Matches");
+    await expect(checked).toContainText("word for word the one you bought");
+    expect(bought).toBe(published);
+    await checked.screenshot({ path: "screenshots/fingerprint-matches.png" });
+
+    // A receipt from a rubric that has since been edited: one character off.
+    const other = bought.slice(0, -1) + (bought.endsWith("0") ? "1" : "0");
+    await page.getByTestId("fingerprint-input").fill(other.match(/.{4}/g)!.join(" "));
+    await page.getByTestId("fingerprint-submit").click();
+    await expect(verdict).toHaveText("Changed since you bought");
+    await expect(checked).toHaveAttribute("data-status", "changed");
+    await checked.screenshot({ path: "screenshots/fingerprint-changed.png" });
   });
 
   test("a passing attempt gets a certificate and no refund", async ({ page, request }) => {

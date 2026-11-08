@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Fingerprint, Scale } from "lucide-react";
 import { showError } from "@/components/error-toast";
 import { useKit } from "@/components/kit/kit-provider";
@@ -24,7 +25,16 @@ export function RubricTerms({ lock, before = false, className = "" }: { lock?: P
       <span>
         {before ? "You're graded on " : "Graded on "}rubric <span data-testid="rubric-version">v{lock.version}</span>, fingerprint{" "}
         <code data-testid="rubric-fingerprint" className="font-mono text-zinc-900">{grouped(lock.fingerprint)}</code>
-        {before ? ". It's locked when you buy, so the terms can't change after." : `, locked when you bought${when ? ` on ${when}` : ""}.`}
+        {before ? ". It's locked when you buy, so the terms can't change after." : `, locked when you bought${when ? ` on ${when}` : ""}.`}{" "}
+        {before ? (
+          <Link href="/rubric" className="font-medium text-brand underline" data-testid="read-rubric">
+            Read the full rubric
+          </Link>
+        ) : (
+          <Link href={`/rubric?v=${encodeURIComponent(lock.version)}&fp=${encodeURIComponent(lock.fingerprint)}`} className="font-medium text-brand underline" data-testid="check-fingerprint">
+            Check it against the public rubric
+          </Link>
+        )}
       </span>
     </span>
   );
