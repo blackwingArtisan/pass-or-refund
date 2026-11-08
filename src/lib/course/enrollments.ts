@@ -116,7 +116,7 @@ export function recoveredUnstartedFor(learnerEmail: string): Enrollment | undefi
 }
 
 /** A blocked or declined refund moved no money, so it doesn't use up the learner's one refund. */
-const USES_THE_REFUND: EnrollmentStatus[] = ["refund_pending", "refunded"];
+const USES_THE_REFUND: EnrollmentStatus[] = ["refund_pending", "refund_review", "refunded"];
 
 /** The policy for this enrollment, including what the learner's other purchases of the course say. */
 export function guaranteeFor(enrollment: Enrollment): GuaranteeDecision {

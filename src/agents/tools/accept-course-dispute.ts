@@ -11,6 +11,7 @@ import { defineTool } from "@/lib/agent/tool";
 import { course } from "@/lib/course/content";
 import { guaranteeFor, readBackRefund, requireEnrollment, saveEnrollment } from "@/lib/course/enrollments";
 import { formatCents } from "@/lib/course/policy";
+import { codeNotes } from "@/lib/course/refund-case";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
 import { refuse, updateRefund } from "./refund-course-purchase";
@@ -49,7 +50,7 @@ export const acceptCourseDispute = (enrollmentId: string) =>
       const decided = getApprovals().list({ runId: ctx.runId }).some((a) => a.tool === ACCEPT_DISPUTE_CLAIM && a.state !== "pending");
       if (decided) refuse(enrollmentId, "A person has already decided on this refund, so the agent can't propose it again.");
       const { cents, amount } = await checked(enrollmentId, ctx.paypal);
-      updateRefund(enrollmentId, { error: undefined, proposal: { amountValue: amount.value, reasons: i.reasons, proposedAt: new Date().toISOString() } });
+      updateRefund(enrollmentId, { error: undefined, proposal: { amountValue: amount.value, reasons: i.reasons, proposedAt: new Date().toISOString(), ...codeNotes(requireEnrollment(enrollmentId)) } });
       const { learnerName } = requireEnrollment(enrollmentId);
       return { amount, summary: `Accept ${learnerName}'s PayPal dispute and refund ${formatCents(cents)}: they failed ${course.title} twice` };
     },

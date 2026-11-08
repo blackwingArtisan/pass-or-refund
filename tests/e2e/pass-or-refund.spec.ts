@@ -125,6 +125,7 @@ async function approveOnTeam(page: Page, id: string) {
   await page.getByTestId("refund-waiting").getByRole("link").click();
   const team = page.getByTestId(`enrollment-${id}`);
   await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+  await expectAgentSummary(team);
   // The mock agent's words. A real agent words its reasons its own way.
   if (!LIVE_AI) await expect(team.getByTestId("approval-reasons")).toContainText("first refund");
   await expect(team).toContainText("Every refund needs a person's approval.");
@@ -132,6 +133,14 @@ async function approveOnTeam(page: Page, id: string) {
   await team.getByTestId("approve-button").click();
   await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
   return team;
+}
+
+/** The approval card leads with the refund agent's own summary for the person deciding. */
+async function expectAgentSummary(team: Locator) {
+  const summary = team.getByTestId("agent-summary");
+  await expect(summary).toContainText("Refund agent’s summary");
+  expect((await summary.innerText()).length).toBeGreaterThan(60);
+  if (!LIVE_AI) await expect(summary).toContainText(/Two complete fails \(\d+ and \d+\)/);
 }
 
 /** The course team passcode, read the way a judge reads it: from the For judges box on the home page. */
@@ -481,6 +490,10 @@ test.describe("mock-safe flows", () => {
     const second = await attempt(page, "fail2", 2);
     expect(second).toBeLessThan(66);
     await expect(page.getByTestId("refund-waiting")).toBeVisible();
+    // The agent writes the learner's note from the lines they fell short on; code fills it if the model doesn't.
+    await expect(page.getByTestId("refund-note")).toContainText("(written by the refund agent)", { timeout: 90_000 });
+    if (!LIVE_AI) await expect(page.getByTestId("refund-note")).toContainText("Your answers fell short most on:");
+    await page.getByTestId("refund-waiting").screenshot({ path: "screenshots/refund-note.png" });
 
     const sandbox = (await mode(request)) === "sandbox";
     if (sandbox) expect((await readPayPalObjects(payment!.orderId, payment!.captureId!)).capture.status).toBe("COMPLETED");
@@ -669,6 +682,70 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("contest-ruling")).toContainText("Agreed: your answer says it plainly.");
     await expect(page.getByTestId("score-1")).toContainText(String(after.contest!.ruling!.scoreAfter));
     await page.getByTestId("contest-status").screenshot({ path: "screenshots/contest-upheld.png" });
+  });
+
+  test("a contested case goes to a person before the refund, who sends it on for approval", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000);
+    const id = await buy(page, request, "Rae Review");
+    await attempt(page, "fail1", 1);
+    const graded = (await enrollmentOf(request, id)).attempts[0];
+    const line = graded.runs[graded.shownRun].items.find((item) => item.verdict !== "met")!.id;
+    await page.getByTestId("contest-line").locator("summary").click();
+    await page.getByTestId("contest-item").selectOption(line);
+    await page.getByTestId("contest-note").fill("I named the stone, so this line should count.");
+    await page.getByTestId("contest-send").click();
+    await expect(page.getByTestId("contest-status")).toContainText("With the course team");
+
+    await page.goto("/team");
+    const card = page.getByTestId(`enrollment-${id}`);
+    await card.getByTestId("contest-ruling-note").fill("The answer names the stone but not why it's needed.");
+    await card.getByTestId("contest-reject").click();
+    await expect(card.getByTestId("team-contest-done")).toContainText("not upheld");
+
+    await page.goto(`/learn/${id}`);
+    await studyThenRetry(page);
+    expect(await attempt(page, "fail2", 2)).toBeLessThan(66);
+    // The agent chooses: a person first, or the proposal straight away. The mock agent always asks first.
+    await expect(page.getByTestId("refund-in-review").or(page.getByTestId("refund-waiting"))).toBeVisible({ timeout: 90_000 });
+    // refund_pending starts the agent, so wait for its choice: a review, or a proposal at the Guard.
+    const choice = async () => {
+      const e = await enrollmentOf(request, id);
+      return e.status === "refund_review" ? "review" : e.approval ? "approval" : "thinking";
+    };
+    await expect.poll(choice, { timeout: 90_000 }).toMatch(/^(review|approval)$/);
+    const routed = (await choice()) === "review";
+    if (!LIVE_AI) expect(routed).toBe(true);
+    if (routed) {
+      await expect(page.getByTestId("refund-in-review")).toContainText("A person is looking at your case before the refund");
+      await expect(page.getByTestId("refund-note")).toContainText("(written by the refund agent)");
+      expect((await enrollmentOf(request, id)).refund?.refundId).toBeUndefined();
+      await page.goto("/team");
+      const box = card.getByTestId("refund-review");
+      await expect(box.getByTestId("refund-review-reason")).not.toBeEmpty();
+      await expect(box.getByTestId("refund-review-summary")).toContainText("Refund agent’s summary");
+      if (!LIVE_AI) await expect(box).toContainText("contested");
+      await expect(box.getByTestId("review-decline")).toBeDisabled();
+      await box.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: "screenshots/refund-review.png" });
+      await box.getByTestId("review-note").fill("The ruling stands, and the refund is still due.");
+      await box.getByTestId("review-propose").click();
+    } else {
+      test.info().annotations.push({ type: "real AI", description: "The agent proposed the refund without asking for a review first" });
+      await page.goto("/team");
+    }
+    await expect(card.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+    await expectAgentSummary(card);
+    if (!LIVE_AI) await expect(card.getByTestId("agent-summary")).toContainText("contested");
+    await card.getByTestId("approve-button").click();
+    await expect(card.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+    const after = await enrollmentOf(request, id);
+    expect(after.refund?.refundId).toBeTruthy();
+    if (routed) expect(after.refund?.review).toMatchObject({ decision: "propose", decidedBy: "course team" });
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(after.payment!.orderId, after.payment!.captureId!, after.refund!.refundId);
+      console.log("PayPal re-read:", JSON.stringify({ reviewedRefund: [paypal.refund?.id, paypal.refund?.status, paypal.capture.status] }));
+      expect(paypal.refund?.status).toBe("COMPLETED");
+    }
   });
 
   test("trying to trick the grader gets flagged and voids the guarantee", { tag: "@live" }, async ({ page, request }) => {

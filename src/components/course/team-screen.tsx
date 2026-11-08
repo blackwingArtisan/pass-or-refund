@@ -23,6 +23,7 @@ const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
   passed: { label: "Passed", tone: "success" },
   under_review: { label: "Needs review", tone: "warning" },
   refund_pending: { label: "Refund needs approval", tone: "warning" },
+  refund_review: { label: "Agent asks for a review", tone: "warning" },
   refund_declined: { label: "Refund declined", tone: "danger" },
   refund_blocked: { label: "Refund blocked", tone: "danger" },
   refunded: { label: "Refunded", tone: "success" },
@@ -31,6 +32,58 @@ const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
 const VERDICT_LABEL: Record<string, string> = { partial: "Partial", not_met: "Missed" };
 
 /** A 69-70 attempt. Every item that lost points gets its own tick before either button opens. */
+/** What the refund agent wrote for the person deciding, from the lines the learner fell short on. */
+function AgentSummary({ text, testId = "agent-summary" }: { text: string; testId?: string }) {
+  return (
+    <div data-testid={testId} className="rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm text-zinc-800">
+      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Refund agent&rsquo;s summary</p>
+      <p className="mt-0.5">{text}</p>
+    </div>
+  );
+}
+
+/** The refund agent sent a contested or borderline case to a person before proposing anything. */
+function RefundReviewBox({ enrollment, onDecided }: { enrollment: EnrollmentView; onDecided: () => void }) {
+  const { kitFetch } = useKit();
+  const { toast } = useToast();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const review = enrollment.refund!.review!;
+
+  async function decide(decision: "propose" | "decline") {
+    setBusy(true);
+    try {
+      await kitFetch(`/api/enrollments/${enrollment.id}/refund/review`, { json: { decision, note } });
+      onDecided();
+    } catch (e) {
+      showError(toast, "That didn't save", e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div data-testid="refund-review" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+      <div>
+        <p className="font-medium text-zinc-900">The refund agent asks you to look before it proposes a refund.</p>
+        <p data-testid="refund-review-reason" className="text-sm text-zinc-700">{review.reason}</p>
+      </div>
+      <AgentSummary text={review.teamSummary} testId="refund-review-summary" />
+      <Field label="Your note" hint="Needed to decline: the learner reads it." htmlFor={`review-note-${enrollment.id}`}>
+        <Textarea id={`review-note-${enrollment.id}`} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} data-testid="review-note" />
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" icon={<Check className="size-4" />} loading={busy} onClick={() => decide("propose")} data-testid="review-propose">
+          Send the refund for approval
+        </Button>
+        <Button size="sm" variant="secondary" icon={<X className="size-4" />} loading={busy} disabled={!note.trim()} onClick={() => decide("decline")} data-testid="review-decline">
+          Decline the refund
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SettleReview({ enrollmentId, attempt, onSettled }: { enrollmentId: string; attempt: Attempt; onSettled: () => void }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
@@ -167,6 +220,8 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           </p>
         ) : null}
         {enrollment.status === "refund_pending" && !enrollment.approval ? <p className="text-sm text-zinc-600">The refund agent is checking the policy.</p> : null}
+        {enrollment.status === "refund_review" && enrollment.refund?.review ? <RefundReviewBox enrollment={enrollment} onDecided={onChange} /> : null}
+        {enrollment.approval && enrollment.refund?.proposal?.teamSummary ? <AgentSummary text={enrollment.refund.proposal.teamSummary} /> : null}
         {enrollment.approval ? (
           <ApprovalPrompt
             approvalId={enrollment.approval.id}

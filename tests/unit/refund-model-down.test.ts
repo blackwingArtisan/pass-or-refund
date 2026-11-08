@@ -2,7 +2,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getApprovals } from "@/lib/agent/approvals";
 import { submitAttempt } from "@/lib/course/attempts";
-import { requireEnrollment, viewEnrollment } from "@/lib/course/enrollments";
+import { rubric } from "@/lib/course/content";
+import { requireEnrollment, saveEnrollment, viewEnrollment } from "@/lib/course/enrollments";
 import { completePurchase, startPurchase } from "@/lib/course/purchase";
 import { samples } from "@/lib/course/samples";
 import type { GradeRun } from "@/lib/course/types";
@@ -25,13 +26,18 @@ const anthropicAnswers = (status: number, type: string, message: string) => {
 };
 
 let learners = 0;
-async function dueRefund() {
+async function dueRefund(contested = false) {
   const email = `model-down${++learners}@example.com`;
   const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
   getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}` });
   const { id } = await completePurchase(enrollment.id, orderId, CHANNEL);
   await submitAttempt(id, samples.fail1, CHANNEL, failing);
   readyForNextAttempt(id);
+  if (contested) {
+    const at = new Date().toISOString();
+    const itemId = rubric.questions[0].items[0].id;
+    saveEnrollment({ ...requireEnrollment(id), contest: { attempt: 1, itemId, note: "I did explain it.", at, ruling: { upheld: false, note: "Not met.", by: "course team", at, scoreBefore: 34, scoreAfter: 34 } } });
+  }
   await submitAttempt(id, samples.fail2, CHANNEL, failing);
   return id;
 }
@@ -79,6 +85,19 @@ describe("the refund agent on the real Claude path", () => {
     const approval = await approvalOf(id);
     expect(requireEnrollment(id).refund?.proposedWithoutAi).toBe("The AI model wasn't available.");
     expect(requireEnrollment(id).refund?.proposal?.reasons.join(" ")).toMatch(/code built this proposal/);
+    getApprovals().decide(approval.id, "denied", "test", "Done");
+  });
+
+  it("proposes a contested case straight to a person when the model is out, with notes code wrote", async () => {
+    anthropicAnswers(529, "overloaded_error", "Overloaded");
+    const id = await dueRefund(true);
+    const approval = await approvalOf(id);
+    const { refund, status } = requireEnrollment(id);
+    expect(status).toBe("refund_pending");
+    expect(refund?.review).toBeUndefined();
+    expect(refund?.proposedWithoutAi).toBeTruthy();
+    expect(refund?.proposal?.teamSummary).toMatch(/contested/);
+    expect(refund?.proposal?.learnerNote).toMatch(/^Sorry/);
     getApprovals().decide(approval.id, "denied", "test", "Done");
   });
 });

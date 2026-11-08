@@ -11,6 +11,7 @@ import { defineTool } from "@/lib/agent/tool";
 import { course } from "@/lib/course/content";
 import { guaranteeFor, readBackRefund, requireEnrollment, saveEnrollment } from "@/lib/course/enrollments";
 import { formatCents, refundAmountProblem } from "@/lib/course/policy";
+import { codeNotes } from "@/lib/course/refund-case";
 import type { Refund } from "@/lib/course/types";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
@@ -60,14 +61,23 @@ export const refundCoursePurchase = (enrollmentId: string) =>
     schema: z.object({
       amount: z.string().min(1).describe('Decimal string, such as "49.00"'),
       reasons: z.array(z.string().min(1).max(240)).min(1).max(5).describe("Why this refund is due, from the policy check. Plain sentences for the person deciding."),
+      team_summary: z.string().min(1).max(600).optional().describe("Two or three sentences for the person deciding: the scores, the rubric lines the learner fell short on, any contest and how it was ruled."),
+      learner_note: z.string().min(1).max(500).optional().describe("Two or three kind sentences the learner reads: sorry, which rubric lines held them back (never their answers), and that the refund comes once a person approves."),
     }),
     title: () => `Propose a refund for ${course.title}`,
     impact: async (i, ctx) => {
+      // Once the agent has sent the case to a person, it waits for them; nothing is recorded, so their review stays clean.
+      if (requireEnrollment(enrollmentId).status === "refund_review") throw new HttpError(409, "This case is with the course team for review, so wait for their decision.", "conflict");
       // A decline is final for this run. Asking again would need a person to reopen it.
       const decided = getApprovals().list({ runId: ctx.runId }).some((a) => a.tool === REFUND_COURSE_PURCHASE && a.state !== "pending");
       if (decided) refuse(enrollmentId, "A person has already decided on this refund, so the agent can't propose it again.");
       const { cents, amount } = await checked(enrollmentId, i.amount, ctx.paypal);
-      updateRefund(enrollmentId, { error: undefined, proposal: { amountValue: i.amount, reasons: i.reasons, proposedAt: new Date().toISOString() } });
+      // The agent writes the notes; code fills any it left out, so a person always has a summary.
+      const fallback = codeNotes(requireEnrollment(enrollmentId));
+      updateRefund(enrollmentId, {
+        error: undefined,
+        proposal: { amountValue: i.amount, reasons: i.reasons, proposedAt: new Date().toISOString(), teamSummary: i.team_summary ?? fallback.teamSummary, learnerNote: i.learner_note ?? fallback.learnerNote },
+      });
       const { learnerName } = requireEnrollment(enrollmentId);
       return { amount, summary: `Refund ${formatCents(cents)} to ${learnerName}, who failed ${course.title} twice` };
     },

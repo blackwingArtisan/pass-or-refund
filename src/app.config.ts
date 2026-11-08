@@ -48,7 +48,8 @@ export const appConfig = {
     approvalThreshold: moneyFromMinor(COURSE_PRICE_CENTS, CURRENCY).value,
     requireApprovalFor: ["refund_course_purchase", "accept_dispute_claim"],
     maxPerAction: "500.00",
-    maxPerDay: "2000.00",
+    // The browser suites buy more courses in a day than this, so their own server lifts it (AGENT_MAX_PER_DAY).
+    maxPerDay: process.env.AGENT_MAX_PER_DAY || "2000.00",
     // A proposal can wait for a person this long. It dies with the process either way.
     approvalTimeoutMs: 60 * 60 * 1000,
   } satisfies Partial<GuardPolicy>,

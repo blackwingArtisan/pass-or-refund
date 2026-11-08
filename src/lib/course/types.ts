@@ -2,7 +2,7 @@
 import type { Outcome } from "@/lib/grading/decide";
 import type { ModelCap, ScoredItem } from "@/lib/grading/frozen/score-items";
 
-export type EnrollmentStatus = "unpaid" | "active" | "passed" | "under_review" | "refund_pending" | "refund_declined" | "refund_blocked" | "refunded";
+export type EnrollmentStatus = "unpaid" | "active" | "passed" | "under_review" | "refund_pending" | "refund_review" | "refund_declined" | "refund_blocked" | "refunded";
 
 export interface GradeRun {
   total: number;
@@ -103,6 +103,23 @@ export interface RefundProposal {
   amountValue: string;
   reasons: string[];
   proposedAt: string;
+  /** Written by the refund agent from the lines the learner fell short on: what the learner reads. */
+  learnerNote?: string;
+  /** Written by the refund agent for the person deciding, shown on the approval card. */
+  teamSummary?: string;
+}
+
+/** The refund agent asked a person to look before any refund is proposed: a contested or borderline case. */
+export interface RefundReview {
+  reason: string;
+  teamSummary: string;
+  learnerNote: string;
+  at: string;
+  /** What the person did: sent it on to the approval gate, or declined it. */
+  decision?: "propose" | "decline";
+  decidedBy?: string;
+  decidedAt?: string;
+  note?: string;
 }
 
 export interface Refund {
@@ -131,6 +148,8 @@ export interface Refund {
   webhookStatus?: string;
   /** Paid by accepting the learner's PayPal dispute, not by a refund call. */
   viaDispute?: string;
+  /** Set when the agent sent the case to a person first. */
+  review?: RefundReview;
 }
 
 /** A PayPal dispute the learner opened on this payment (CUSTOMER.DISPUTE.* webhooks). */
