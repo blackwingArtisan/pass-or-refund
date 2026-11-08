@@ -3,11 +3,13 @@ import { appConfig } from "@/app.config";
 import { captureCoursePayment } from "@/agents/tools/capture-course-payment";
 import { runTool } from "@/lib/agent/execute";
 import { Guard } from "@/lib/agent/guard";
+import { withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import { singleton } from "@/lib/singleton";
 import { course, COURSE_PRICE_CENTS, CURRENCY } from "./content";
+import { enrollmentChannel } from "./scope";
 import { createEnrollment, recoveredUnstartedFor, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
 import type { Enrollment, Payment } from "./types";
 import type { Order } from "@/lib/paypal/types";
@@ -75,12 +77,15 @@ export async function resumePurchase(learnerEmail: string, channel: string): Pro
 /** The amount comes from the course, never the browser. */
 export async function startPurchase(learnerName: string, learnerEmail: string, opts: { testRun?: boolean } = {}): Promise<{ enrollment: Enrollment; orderId: string }> {
   const created = createEnrollment(learnerName, learnerEmail, opts);
-  const order = await getPayPal().orders.create(
-    {
-      intent: "CAPTURE",
-      purchase_units: [{ amount: moneyFromMinor(COURSE_PRICE_CENTS, CURRENCY), description: `${course.title} by ${course.creator}`, custom_id: created.id }],
-    },
-    { requestId: `order-${created.id}` },
+  // On the learner's own timeline, so it starts where the money does: Create order, then Capture.
+  const order = await withContext({ channel: enrollmentChannel(created.id) }, () =>
+    getPayPal().orders.create(
+      {
+        intent: "CAPTURE",
+        purchase_units: [{ amount: moneyFromMinor(COURSE_PRICE_CENTS, CURRENCY), description: `${course.title} by ${course.creator}`, custom_id: created.id }],
+      },
+      { requestId: `order-${created.id}` },
+    ),
   );
   return { enrollment: saveEnrollment({ ...created, payment: { orderId: order.id, orderStatus: order.status } }), orderId: order.id };
 }

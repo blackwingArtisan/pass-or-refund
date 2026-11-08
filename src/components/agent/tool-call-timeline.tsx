@@ -19,6 +19,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { collapseRuns, isQuietStep as isQuiet, quietKey, repeatLabel } from "@/lib/events/collapse";
 import type { TimelineStatus, TimelineStep } from "@/lib/events/types";
 import { MoneyBadge } from "../money-badge";
 import { cn } from "../ui/cn";
@@ -59,10 +60,6 @@ const RAIL: Record<TimelineStatus, string> = {
   skipped: "bg-zinc-50 text-zinc-400 ring-zinc-200",
   info: "bg-brand-50 text-brand-600 ring-brand-200",
 };
-
-function isQuiet(step: TimelineStep) {
-  return Boolean((step.data as { quiet?: boolean } | undefined)?.quiet) && step.status !== "failed" && step.status !== "awaiting_approval";
-}
 
 function time(ts: string) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -115,15 +112,15 @@ export function wrapAtDots(text: string): ReactNode {
   return parts.length < 2 ? text : parts.map((part, i) => (i === 0 ? part : [<wbr key={i} />, part]));
 }
 
-function CompactRow({ step }: { step: TimelineStep }) {
+function CompactRow({ step, count = 1 }: { step: TimelineStep; count?: number }) {
   const Icon = KIND_ICON[step.kind] ?? CircleDot;
   return (
-    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500">
+    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500" data-testid={count > 1 ? "timeline-repeat" : undefined} data-count={count > 1 ? count : undefined}>
       <span className="z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-zinc-200">
         {step.status === "running" ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
       </span>
       <span className="truncate">
-        <span className="font-medium text-zinc-600">{wrapAtDots(step.title)}</span>
+        <span className="font-medium text-zinc-600">{wrapAtDots(repeatLabel(step.title, count))}</span>
         {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{step.detail.slice(0, 140)}</span> : null}
       </span>
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
@@ -223,7 +220,8 @@ export function ToolCallTimeline({
   return (
     <div ref={ref} className={cn("scrollbar-thin overflow-y-auto pr-1", className)} data-testid="tool-call-timeline">
       <ol className="relative before:absolute before:bottom-4 before:left-[17px] before:top-2 before:w-px before:bg-zinc-200">
-        {visible.map((s) => (isQuiet(s) ? <CompactRow key={s.stepId} step={s} /> : <StepCard key={s.stepId} step={s} />))}
+        {/* A run of the same background read is one row ("Checked order 5×"), so the money steps stand out. */}
+        {collapseRuns(visible, quietKey).map(({ first, last, count }) => (isQuiet(last) ? <CompactRow key={first.stepId} step={last} count={count} /> : <StepCard key={first.stepId} step={last} />))}
       </ol>
     </div>
   );

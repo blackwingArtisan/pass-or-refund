@@ -783,6 +783,31 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("submit-attempt")).toBeVisible();
   });
 
+  /** The background rows on a timeline, top to bottom, without their times. */
+  const quietRows = (timeline: Locator) => timeline.locator("ol > li:not([data-testid=timeline-step]) span.truncate > span:first-child").allInnerTexts();
+
+  test("the PayPal timeline folds repeated checks into one row, so the money steps stand out", { tag: "@live" }, async ({ page, request }) => {
+    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: "Quinn Quiet", learnerEmail: newEmail("Quinn Quiet") } })).json();
+    // The course page asks PayPal about the order while its window is open; three asks, as the learner's page.
+    const asLearner = { headers: { "x-kit-session": `enrollment:${enrollmentId}` } };
+    for (let i = 0; i < 3; i++) expect((await request.post(`/api/enrollments/${enrollmentId}/check-payment`, asLearner)).ok()).toBe(true);
+    const sandbox = (await mode(request)) === "sandbox";
+    expect((await request.post(sandbox ? `/api/dev/sandbox/approve-order/${orderId}` : `/api/dev/mock/approve-order/${orderId}`, sandbox ? undefined : { data: { email: newEmail("paypal.quinn") } })).ok()).toBe(true);
+    expect((await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId }, ...asLearner })).ok()).toBe(true);
+
+    await page.goto(`/learn/${enrollmentId}`);
+    const timeline = page.getByTestId("tool-call-timeline").filter({ visible: true });
+    const folded = timeline.getByTestId("timeline-repeat").filter({ hasText: "Checked order" }).first();
+    await expect(folded).toBeVisible({ timeout: 20_000 });
+    await expect(folded).toContainText(/Checked order [3-9]×/);
+    const spine = timeline.getByTestId("step-title");
+    await expect(spine.filter({ hasText: "Create order" }).first()).toBeVisible();
+    await expect(spine.filter({ hasText: /^Capture/ }).first()).toBeVisible();
+    const rows = await quietRows(timeline);
+    expect(rows.filter((r, i) => i > 0 && r === rows[i - 1]), `repeated rows: ${rows.join(" | ")}`).toEqual([]);
+    await timeline.screenshot({ path: "screenshots/timeline-folded.png" });
+  });
+
   test("a checkout nobody paid for says so", { tag: "@live" }, async ({ page, request }) => {
     const { enrollmentId } = await (await request.post("/api/enrollments", { data: { learnerName: "Una Paid", learnerEmail: newEmail("Una Paid") } })).json();
     await page.goto(`/learn/${enrollmentId}`);
