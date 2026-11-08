@@ -514,19 +514,41 @@ test.describe("mock-safe flows", () => {
 
   test("a busy grader shows a live countdown that clears itself, and the answers stay", async ({ page, request }) => {
     await buy(page, request, "Busy Grader");
+    await expect(page.getByTestId("submit-attempt")).toBeDisabled(); // nothing written yet
     await page.route("**/attempts", (route) =>
       route.request().method() === "POST"
-        ? route.fulfill({ status: 429, headers: { "Retry-After": "3" }, json: { error: { type: "rate_limited", message: "Too many requests. Try again in 3s.", retryAfterSeconds: 3 } } })
+        ? route.fulfill({ status: 429, headers: { "Retry-After": "7" }, json: { error: { type: "rate_limited", message: "Too many requests. Try again in 7s.", retryAfterSeconds: 7 } } })
         : route.continue(),
     );
     await page.getByTestId("sample-fail1").click();
+    const typed = await page.getByTestId("answer-q1").inputValue();
     await page.getByTestId("submit-attempt").click();
     const countdown = page.getByTestId("busy-countdown");
+    await expect(countdown).toHaveText(/Try again in [5-7]s/);
+    await expect(page.getByRole("status").filter({ hasText: "The grader is busy" })).toBeVisible();
+    await expect(page.getByTestId("grader-busy")).toBeVisible();
+    await expect(page.getByTestId("submit-attempt")).toBeDisabled();
+    // It ticks, and it outlasts the old 4.5 s toast.
+    await page.waitForTimeout(5_000);
     await expect(countdown).toHaveText(/Try again in [1-3]s/);
-    await expect(page.getByText("The grader is busy")).toBeVisible();
-    // Still on screen after the old 4.5 s auto-hide would have hit 3 s in, then gone once the wait ends.
-    await expect(countdown).toBeHidden({ timeout: 8_000 });
+    await expect(countdown).toBeHidden({ timeout: 6_000 });
+    await expect(page.getByTestId("grader-busy")).toBeHidden();
     await expect(page.getByTestId("submit-attempt")).toBeEnabled();
+    await expect(page.getByTestId("answer-q1")).toHaveValue(typed);
+  });
+
+  test("other errors stay until dismissed, in plain words", async ({ page, request }) => {
+    await buy(page, request, "Plain Words");
+    await page.route("**/attempts", (route) => (route.request().method() === "POST" ? route.fulfill({ status: 500, json: {} }) : route.continue()));
+    await page.getByTestId("sample-fail1").click();
+    await page.getByTestId("submit-attempt").click();
+    const toast = page.getByRole("status").filter({ hasText: "Your attempt wasn't graded" });
+    await expect(toast).toContainText("Something went wrong. Please try again.");
+    await expect(toast).not.toContainText("500");
+    await page.waitForTimeout(6_000);
+    await expect(toast).toBeVisible();
+    await toast.getByRole("button", { name: "Dismiss" }).click();
+    await expect(toast).toBeHidden();
   });
 
   test("/team states its access rule", async ({ page }) => {

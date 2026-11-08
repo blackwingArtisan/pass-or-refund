@@ -1,5 +1,6 @@
 "use client";
 
+import { showError } from "@/components/error-toast";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useKit } from "@/components/kit/kit-provider";
@@ -82,7 +83,7 @@ export function CourseScreen() {
               createOrder={createOrder}
               onApprove={onApprove}
               onError={(e) => {
-                if (!(e instanceof AlreadyPaid)) toast({ title: "The payment didn't go through", description: e.message, variant: "error" });
+                if (!(e instanceof AlreadyPaid)) showError(toast, "The payment didn't go through", e);
               }}
               amountLabel={formatCents(COURSE_PRICE_CENTS)}
               disabled={!ready}

@@ -1,5 +1,6 @@
 "use client";
 
+import { showError } from "@/components/error-toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Check, RotateCcw, ShieldAlert, Users, X } from "lucide-react";
@@ -45,7 +46,7 @@ function SettleReview({ enrollmentId, attempt, onSettled }: { enrollmentId: stri
       await kitFetch(`/api/enrollments/${enrollmentId}/settle`, { json: { outcome, note, checkedItems: checked } });
       onSettled();
     } catch (e) {
-      toast({ title: "That didn't save", description: (e as Error).message, variant: "error" });
+      showError(toast, "That didn't save", e);
     } finally {
       setBusy(false);
     }
@@ -109,7 +110,7 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
       await kitFetch(`/api/enrollments/${enrollment.id}/refund`, { method: "POST" });
       onChange();
     } catch (e) {
-      toast({ title: "Could not request the refund", description: (e as Error).message, variant: "error" });
+      showError(toast, "Could not request the refund", e);
     } finally {
       setBusy(false);
     }
