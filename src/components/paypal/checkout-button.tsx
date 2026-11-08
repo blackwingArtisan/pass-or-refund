@@ -31,6 +31,8 @@ export interface CheckoutButtonProps {
   amountLabel?: string;
   disabled?: boolean;
   label?: string;
+  /** Mock only: the buyer the simulated PayPal window approves as. Defaults to the sandbox buyer. */
+  buyerEmail?: string;
 }
 
 const SANDBOX = "sandbox" as const; // never read from env: v6 picks the environment from this prop only
@@ -38,7 +40,7 @@ const SANDBOX = "sandbox" as const; // never read from env: v6 picks the environ
 export function CheckoutButton(props: CheckoutButtonProps) {
   const { status } = useKit();
   if (!status) return <Skeleton className="h-11 w-full max-w-sm rounded-lg" />;
-  if (status.paypal.mode === "mock") return <MockCheckoutButton {...props} buyerEmail={status.paypal.buyerEmail} />;
+  if (status.paypal.mode === "mock") return <MockCheckoutButton {...props} buyerEmail={props.buyerEmail || status.paypal.buyerEmail} />;
   if (!status.paypal.clientId) return <p className="text-sm text-red-600">PAYPAL_CLIENT_ID is missing.</p>;
   return (
     <div className="w-full max-w-sm" data-testid="paypal-v6-button">
@@ -86,7 +88,7 @@ function TestCardButton({ createOrder, onApprove, onError, disabled }: CheckoutB
   );
 }
 
-function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountLabel, disabled, label, buyerEmail }: CheckoutButtonProps & { buyerEmail: string }) {
+function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountLabel, disabled, label, buyerEmail }: Omit<CheckoutButtonProps, "buyerEmail"> & { buyerEmail: string }) {
   const { kitFetch } = useKit();
   const [orderId, setOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState<"create" | "approve" | null>(null);

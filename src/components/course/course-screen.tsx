@@ -76,7 +76,7 @@ export function CourseScreen() {
             <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
               <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
             </Field>
-            <Field label="Your email" hint="The guarantee is one refund per learner per course, tracked by this address and your PayPal account." htmlFor="learner-email">
+            <Field label="Your email" hint="Guarantee: one refund per PayPal account. It is matched on this address and the PayPal account that pays." htmlFor="learner-email">
               <Input id="learner-email" data-testid="learner-email" type="email" value={learnerEmail} maxLength={200} onChange={(e) => setLearnerEmail(e.target.value)} placeholder="alex@example.com" />
             </Field>
             <CheckoutButton
@@ -87,6 +87,7 @@ export function CourseScreen() {
               }}
               amountLabel={formatCents(COURSE_PRICE_CENTS)}
               disabled={!ready}
+              buyerEmail={email}
               label={`Buy for ${formatCents(COURSE_PRICE_CENTS)}`}
             />
             {ready ? null : <p className="text-xs text-zinc-500">Add your name and email to buy.</p>}

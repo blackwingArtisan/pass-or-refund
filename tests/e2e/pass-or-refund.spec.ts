@@ -24,6 +24,7 @@ const newEmail = (name: string) => `${name.toLowerCase().replace(/\W+/g, ".")}.$
 async function buy(page: Page, request: APIRequestContext, name: string, email = newEmail(name)): Promise<string> {
   await page.goto("/course");
   await expect(page.getByTestId("guarantee").filter({ visible: true })).toContainText("Fail the final check twice");
+  await expect(page.getByText("Guarantee: one refund per PayPal account").filter({ visible: true })).toBeVisible();
   await page.getByTestId("learner-name").filter({ visible: true }).fill(name);
   await page.getByTestId("learner-email").filter({ visible: true }).fill(email);
   if ((await mode(request)) === "sandbox") {
@@ -289,7 +290,7 @@ test.describe("mock-safe flows", () => {
 
     const second = await buy(page, request, "Rae Twice", email.toUpperCase());
     await attempt(page, "fail1", 1);
-    await expect(page.getByTestId("prior-refund")).toContainText("one refund per learner per course");
+    await expect(page.getByTestId("prior-refund")).toContainText("one refund per PayPal account and per email");
     await skipTheWait(page);
     await attempt(page, "fail2", 2);
     await expect(page.getByTestId("refund-waiting")).toBeHidden();
@@ -410,32 +411,44 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("refund-waiting")).toBeVisible();
   });
 
-  test("a new email on the same PayPal account can't get a second refund", async ({ page, request }) => {
-    test.skip((await mode(request)) !== "mock", "Wallet buyers need a sandbox login, so the payer id can only be set on mock PayPal. A guest card buyer has none.");
-    const buyAs = async (name: string, payerId: string) => {
-      const email = newEmail(name);
-      const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: name, learnerEmail: email } })).json();
-      expect((await request.post(`/api/dev/mock/approve-order/${orderId}`, { data: { payerId } })).ok()).toBe(true);
-      expect((await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId } })).ok()).toBe(true);
-      await page.goto(`/learn/${enrollmentId}`);
-      return enrollmentId as string;
-    };
-    const payerId = `PAYER${Date.now()}`;
-    const first = await buyAs("Pat First", payerId);
-    await failTwice(page);
-    await approveOnTeam(page, first);
+  /** Buys through the mock PayPal window as a given PayPal payer: an account id, or just the email PayPal has (a guest card buyer). */
+  async function buyAsPayer(page: Page, request: APIRequestContext, name: string, payer: { payerId?: string; email?: string }) {
+    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: name, learnerEmail: newEmail(name) } })).json();
+    expect((await request.post(`/api/dev/mock/approve-order/${orderId}`, { data: payer })).ok()).toBe(true);
+    expect((await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId } })).ok()).toBe(true);
+    await page.goto(`/learn/${enrollmentId}`);
+    return enrollmentId as string;
+  }
 
-    const second = await buyAs("Pat Second", payerId);
+  async function expectNoSecondRefund(page: Page, request: APIRequestContext, second: string) {
     await attempt(page, "fail1", 1);
     await expect(page.getByTestId("prior-refund")).toContainText("you\u2019ve had yours");
     await skipTheWait(page);
     await attempt(page, "fail2", 2);
     await expect(page.getByTestId("refund-waiting")).toBeHidden();
-    const { status, refund, guarantee } = await enrollmentOf(request, second);
+    const { status, refund, guarantee, payment } = await enrollmentOf(request, second);
     expect(status).toBe("active");
     expect(refund).toBeUndefined();
     expect(guarantee.checks.find((c) => c.rule === "one_refund_per_learner")?.passed).toBe(false);
-  });
+    expect(payment).not.toHaveProperty("payerEmail");
+  }
+
+  for (const [label, payers] of [
+    // Two wallet logins on one PayPal account: the account id matches, PayPal's email for it is told apart here on purpose.
+    ["the same PayPal account", () => { const payerId = `PAYER${Date.now()}`; return [{ payerId, email: newEmail("Wallet One") }, { payerId, email: newEmail("Wallet Two") }]; }],
+    // Two guest card checkouts in PayPal's window: a new account id each time, the same buyer email.
+    ["the same PayPal payer email (a guest card buyer)", () => { const email = newEmail("Guest Card"); return [{ email }, { email: email.toUpperCase() }]; }],
+  ] as const) {
+    test(`a new email on ${label} can't get a second refund`, async ({ page, request }) => {
+      test.skip((await mode(request)) !== "mock", "The PayPal payer can only be chosen on mock PayPal: a sandbox wallet buyer needs a login.");
+      const [one, two] = payers();
+      const first = await buyAsPayer(page, request, "Pat First", one);
+      await failTwice(page);
+      await approveOnTeam(page, first);
+      const second = await buyAsPayer(page, request, "Pat Second", two);
+      await expectNoSecondRefund(page, request, second);
+    });
+  }
 
   /** A checkout started and approved at PayPal, with the money taken while the app wasn't listening. */
   async function paidBehindTheApp(request: APIRequestContext, name: string, email: string) {
@@ -444,7 +457,7 @@ test.describe("mock-safe flows", () => {
       expect((await request.post(`/api/dev/sandbox/approve-order/${orderId}`)).ok()).toBe(true);
       await captureBehindTheApp(orderId);
     } else {
-      expect((await request.post(`/api/dev/mock/approve-order/${orderId}`, { data: {} })).ok()).toBe(true);
+      expect((await request.post(`/api/dev/mock/approve-order/${orderId}`, { data: { email: `paypal.${email}` } })).ok()).toBe(true);
       expect((await request.post(`/api/dev/mock/behind-the-app/${enrollmentId}`, { data: { step: "capture" } })).ok()).toBe(true);
     }
     return { id: enrollmentId as string, orderId: orderId as string };

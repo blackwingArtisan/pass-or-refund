@@ -217,7 +217,7 @@ function StudyChecklist({ enrollment, attempt, onTick, onReviewed }: { enrollmen
 function AfterFail({ enrollment, attempt, onTick, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onTick: (itemId: string) => void; onReviewed: () => void }) {
   const prior = enrollment.guarantee.checks.find((c) => c.rule === "one_refund_per_learner");
   if (enrollment.guaranteeVoid) return <Notice tone="error" icon={<CircleAlert className="size-4" />}>The guarantee no longer applies, because an attempt tried to instruct the grader. You can still study and try again.</Notice>;
-  if (prior && !prior.passed) return <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="prior-refund">This purchase isn&rsquo;t covered by the guarantee, because it allows one refund per learner per course and you&rsquo;ve had yours. You can still study and try again.</Notice>;
+  if (prior && !prior.passed) return <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="prior-refund">This purchase isn&rsquo;t covered by the guarantee, because it allows one refund per PayPal account and per email, and you&rsquo;ve had yours. You can still study and try again.</Notice>;
   const incomplete = attempt.nearCopyOf !== undefined ? `because it's nearly the same as attempt ${attempt.nearCopyOf}` : `because every question needs an answer and the attempt needs at least ${MIN_POINTS_FOR_REFUND} points`;
   const why = attemptComplete(attempt) ? "because you hadn't marked your study list as reviewed" : incomplete;
   const reviewed = enrollment.reviewedAttempt === attempt.number;
