@@ -6,6 +6,7 @@ import { formatCents } from "@/lib/course/policy";
 import { teamPasscode } from "@/lib/course/team-access";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
+import { CohortStats } from "../course/rubric-receipt";
 
 /**
  * Landing page sections. Content comes from appConfig.landing and creatorCase().
@@ -183,7 +184,13 @@ export function Hero() {
           </p>
           <ForJudges />
         </div>
-        <CreatorNumbers />
+        <div className="space-y-4">
+          <CreatorNumbers />
+          <div data-testid="landing-cohort" className="rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm ring-1 ring-black/5">
+            <p className="mb-3 text-sm font-semibold text-zinc-900">How learners did, before you buy</p>
+            <CohortStats />
+          </div>
+        </div>
       </div>
     </section>
   );

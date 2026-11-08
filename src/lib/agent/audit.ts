@@ -18,7 +18,9 @@ export type AuditAction =
   | "approval.denied"
   | "approval.expired"
   | "review.settled"
-  | "attempt.wait_skipped";
+  | "attempt.wait_skipped"
+  | "contest.opened"
+  | "contest.ruled";
 
 export interface AuditEntry {
   seq: number;
