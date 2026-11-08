@@ -121,6 +121,30 @@ function CohortTables({ cohort }: { cohort: CohortResponse }) {
   );
 }
 
+/** How many attempts needed more than one grade, and how many a person decided. */
+function GradingBands({ grading }: { grading: Cohort["grading"] }) {
+  const share = (n: number) => (grading.attempts ? ` (${Math.round((n / grading.attempts) * 100)}%)` : "");
+  return (
+    <div data-testid="cohort-grading" className="mb-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+      <p className="font-semibold text-zinc-900">How the grader decided {grading.attempts} attempts</p>
+      <ul className="mt-1.5 grid gap-1 sm:grid-cols-3">
+        <li data-testid="cohort-graded-once">
+          <span className="font-semibold tabular-nums text-zinc-900">{grading.gradedOnce}</span>
+          {share(grading.gradedOnce)} decided by one grade
+        </li>
+        <li data-testid="cohort-graded-three">
+          <span className="font-semibold tabular-nums text-zinc-900">{grading.gradedThreeTimes}</span>
+          {share(grading.gradedThreeTimes)} scored 66-73, so graded three times and the middle score kept
+        </li>
+        <li data-testid="cohort-to-person">
+          <span className="font-semibold tabular-nums text-zinc-900">{grading.toPerson}</span>
+          {share(grading.toPerson)} landed on 69 or 70 and went to a person
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 function FixFirst({ item }: { item: ItemSummary }) {
   return (
     <div data-testid="cohort-fix-first" className="mb-6 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
@@ -180,6 +204,7 @@ export function CohortScreen() {
       {cohort && !empty ? (
         <>
           {worst && worst.answered > 0 && worst.missRate > 0 ? <FixFirst item={worst} /> : null}
+          <GradingBands grading={cohort.grading} />
           {CohortStudio ? <CohortStudio cohort={cohort} /> : <CohortTables cohort={cohort} />}
         </>
       ) : null}

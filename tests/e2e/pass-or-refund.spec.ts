@@ -289,6 +289,27 @@ test.describe("the story on the first screen", () => {
     });
   }
 
+  test("the guarantee card states the grader's sealed result, and says the judges and attempts were AI-written", { tag: "@live" }, async ({ page }) => {
+    await page.goto("/");
+    const accuracy = page.getByTestId("grader-accuracy");
+    await expect(accuracy).toContainText("How accurate is the grader?");
+    await expect(accuracy).toContainText("20 new attempts it had never seen, scored first by 2 blind judges, graded 4 times over");
+    for (const line of ["No attempt both judges failed was ever passed.", "No attempt both judges scored 80 or more was ever refunded.", "89-100%", "95% of repeats", "$0.018-0.021 per decision"]) await expect(accuracy).toContainText(line);
+    await expect(page.getByTestId("grader-accuracy-provenance")).toContainText(/Not real learners: the judges, the attempts and the grader are all Claude/);
+
+    // /cohort says how this app's own attempts were decided; one grade plus three grades is every attempt.
+    await page.goto("/cohort");
+    const bands = page.getByTestId("cohort-grading");
+    await expect(bands).toContainText(/How the grader decided \d+ attempts/);
+    const count = async (testId: string) => Number((await page.getByTestId(testId).innerText()).match(/^\d+/)![0]);
+    const attempts = Number((await bands.locator("p").first().innerText()).match(/\d+/)![0]);
+    const [once, three, person] = [await count("cohort-graded-once"), await count("cohort-graded-three"), await count("cohort-to-person")];
+    expect(once + three).toBe(attempts);
+    expect(person).toBeLessThanOrEqual(three);
+    expect(attempts).toBeGreaterThan(0);
+    await bands.screenshot({ path: "screenshots/cohort-grading.png" });
+  });
+
   test("the sample certificate is one click from the story", async ({ page, request }) => {
     await page.goto("/");
 

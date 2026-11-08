@@ -2,6 +2,7 @@ import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles, Users } from "lucid
 import { appConfig } from "@/app.config";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { creatorCase } from "@/lib/course/creator-case";
+import { GRADER_FRESH_SET, graderAccuracyLines } from "@/lib/course/grader-accuracy";
 import { formatCents } from "@/lib/course/policy";
 import { teamPasscode } from "@/lib/course/team-access";
 import { buttonClass, ButtonLink } from "../ui/button";
@@ -51,11 +52,38 @@ function CreatorNumbers() {
           <dd data-testid="creator-kept" className="font-semibold tabular-nums text-zinc-900">{formatCents(c.keptPerSaleCents)}</dd>
         </div>
       </dl>
+      <GraderAccuracy />
       <p className="mt-3 text-xs leading-relaxed text-zinc-500">
         The sample cohort is {c.learners} made-up learners graded on the real rubric, so the rate is illustrative. Before PayPal&rsquo;s fees. Your own learners replace it on{" "}
         <a href="/cohort" className="underline">the cohort page</a>.
       </p>
     </div>
+  );
+}
+
+/** The grader's sealed held-out result, worded as what it is: AI-written attempts and AI judges. */
+function GraderAccuracy() {
+  const g = GRADER_FRESH_SET;
+  return (
+    <details data-testid="grader-accuracy" className="group mt-4 rounded-xl bg-zinc-50 px-3 py-2.5 text-sm" open>
+      <summary className="cursor-pointer list-none font-semibold text-zinc-900">
+        How accurate is the grader?{" "}
+        <span className="font-normal text-zinc-500">
+          {g.attempts} new attempts it had never seen, scored first by {g.judges} blind judges, graded {g.repeats} times over
+        </span>
+      </summary>
+      <ul className="mt-2 space-y-1 text-zinc-700">
+        {graderAccuracyLines().map((line) => (
+          <li key={line} className="flex gap-2">
+            <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+      <p data-testid="grader-accuracy-provenance" className="mt-2 text-xs text-zinc-500">
+        Not real learners: {g.provenance.charAt(0).toLowerCase() + g.provenance.slice(1)}
+      </p>
+    </details>
   );
 }
 
