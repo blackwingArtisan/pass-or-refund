@@ -512,6 +512,23 @@ test.describe("mock-safe flows", () => {
     }
   });
 
+  test("a busy grader shows a live countdown that clears itself, and the answers stay", async ({ page, request }) => {
+    await buy(page, request, "Busy Grader");
+    await page.route("**/attempts", (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({ status: 429, headers: { "Retry-After": "3" }, json: { error: { type: "rate_limited", message: "Too many requests. Try again in 3s.", retryAfterSeconds: 3 } } })
+        : route.continue(),
+    );
+    await page.getByTestId("sample-fail1").click();
+    await page.getByTestId("submit-attempt").click();
+    const countdown = page.getByTestId("busy-countdown");
+    await expect(countdown).toHaveText(/Try again in [1-3]s/);
+    await expect(page.getByText("The grader is busy")).toBeVisible();
+    // Still on screen after the old 4.5 s auto-hide would have hit 3 s in, then gone once the wait ends.
+    await expect(countdown).toBeHidden({ timeout: 8_000 });
+    await expect(page.getByTestId("submit-attempt")).toBeEnabled();
+  });
+
   test("/team states its access rule", async ({ page }) => {
     await page.goto("/team");
     await expect(page.getByTestId("team-access-rule")).toContainText("open to anyone on purpose");

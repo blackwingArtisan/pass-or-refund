@@ -266,6 +266,7 @@ export function LearnerScreen({ id }: { id: string }) {
       setEnrollment(await kitFetch<EnrollmentView>(`${url}/attempts`, { json: { answers } }));
     } catch (e) {
       if (GRADER_OUTAGES.includes((e as ApiError).status)) setGradingProblem((e as Error).message);
+      else if ((e as ApiError).retryAfterSeconds) toast({ title: "The grader is busy", description: "Your answers are still here.", variant: "warning", countdownSeconds: (e as ApiError).retryAfterSeconds });
       else toast({ title: "Your attempt wasn't graded", description: (e as Error).message, variant: "error" });
     } finally {
       setGrading(false);
