@@ -5,7 +5,7 @@
  * code does, so a due refund still reaches a person. Whatever the run ends with, finish() leaves a
  * state the learner can read.
  */
-import { REFUND_AGENT_GOAL, refundAgent, refundWithoutAi } from "@/agents/refund-agent";
+import { REFUND_AGENT_GOAL, refundAgentFor, refundWithoutAiFor } from "@/agents/refund-agent";
 import { getApprovals } from "@/lib/agent/approvals";
 import type { AgentDefinition } from "@/lib/agent/define";
 import { createAgentRun, runAgentToCompletion, type AgentRun } from "@/lib/agent/runs";
@@ -46,7 +46,7 @@ const whyNoAi = (run: AgentRun) => (/credit|budget/i.test(run.error ?? "") ? "Th
 
 /** Proposes without the model. The tools still check every rule, and the Guard still waits for a person. */
 function proposeWithoutAi(id: string, failed: AgentRun, channel: string): Promise<AgentRun> {
-  const agent = refundWithoutAi(id);
+  const agent = refundWithoutAiFor(requireEnrollment(id));
   const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel, mode: "scripted" });
   const enrollment = requireEnrollment(id);
   saveEnrollment({ ...enrollment, refund: { ...enrollment.refund!, runId: run.id, proposedWithoutAi: whyNoAi(failed) } });
@@ -54,7 +54,7 @@ function proposeWithoutAi(id: string, failed: AgentRun, channel: string): Promis
 }
 
 /** Sends a due refund to the agent. No money moves until a person approves at the Guard. */
-export function requestRefund(enrollment: Enrollment, channel: string, agent: AgentDefinition = refundAgent(enrollment.id)): { enrollment: Enrollment; finished: Promise<void> } {
+export function requestRefund(enrollment: Enrollment, channel: string, agent: AgentDefinition = refundAgentFor(enrollment)): { enrollment: Enrollment; finished: Promise<void> } {
   if (activeRefunds().has(enrollment.id)) throw new HttpError(409, "This refund is already waiting for approval.", "conflict");
   if (!guaranteeFor(enrollment).due) throw new HttpError(409, "The guarantee doesn't cover this enrollment.", "conflict");
   if (!enrollment.payment?.captureId) throw new HttpError(409, "This enrollment has no payment to refund.", "conflict");
