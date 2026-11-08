@@ -13,7 +13,7 @@ import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
-import { isCourseStep } from "@/lib/course/scope";
+import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
@@ -142,6 +142,8 @@ function Certificate({ learnerName, attempt }: { learnerName: string; attempt: A
   );
 }
 
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
 function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
   const refund = enrollment.refund!;
   const rows = [
@@ -167,7 +169,9 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
       </dl>
       {refund.refundStatus === "PENDING" ? (
         <p data-testid="refund-pending-note" className="mt-4 text-sm text-zinc-600">
-          {refund.refundStatusReason === "ECHECK" ? (
+          {refund.refundStatusReason === "DISPUTE" ? (
+            <>PayPal is paying this back through the dispute you opened, which the course team accepted.</>
+          ) : refund.refundStatusReason === "ECHECK" ? (
             <>
               PayPal has accepted this refund, but the money hasn&rsquo;t reached the buyer yet. The seller&rsquo;s PayPal balance is smaller than the refund, so PayPal is drawing it from the seller&rsquo;s bank, which it calls ECHECK. That takes days, and on a sandbox test account it may stay PENDING.
             </>
@@ -177,7 +181,18 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
           This page updates when it settles.
         </p>
       ) : null}
+      {refund.viaDispute ? (
+        <p data-testid="refund-via-dispute" className="mt-4 text-sm text-zinc-600">
+          Paid by accepting your PayPal dispute, so the dispute is closed in your favour.
+        </p>
+      ) : null}
       <p className="mt-4 text-xs text-zinc-500">{refund.rereadAt ? `Read back from PayPal after the refund at ${new Date(refund.rereadAt).toLocaleTimeString("en-US")}.` : "Checking this with PayPal."}</p>
+      {refund.webhookAt ? (
+        <p data-testid="refund-webhook" className="mt-1 text-xs text-zinc-500">
+          PayPal&rsquo;s webhook confirmed it at {clock(refund.webhookAt)}
+          {refund.webhookStatus && refund.webhookStatus !== "COMPLETED" ? `, as ${refund.webhookStatus}` : ""}.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -238,7 +253,6 @@ function AfterFail({ enrollment, attempt, onTick, onReviewed }: { enrollment: En
 export function LearnerScreen({ id }: { id: string }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
-  const { steps } = useTimeline();
   const [enrollment, setEnrollment] = useState<EnrollmentView | null>(null);
   const [missing, setMissing] = useState(false);
   const [grading, setGrading] = useState(false);
@@ -250,6 +264,8 @@ export function LearnerScreen({ id }: { id: string }) {
   }, []);
   const url = `/api/enrollments/${id}`;
   const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
+  // Only this enrollment's own PayPal webhooks, and each one refreshes the page: it may have settled something.
+  const { steps } = useTimeline({ includeGlobal: false, channels: [enrollmentChannel(id)], onEvent: (e) => void (e.kind === "webhook" && load().then(setEnrollment).catch(() => undefined)) });
   const { status, refund } = enrollment ?? {};
   const waiting = status === "refund_pending" || status === "under_review" || refund?.refundStatus === "PENDING" || (status === "refunded" && !refund?.rereadAt);
 
@@ -316,6 +332,11 @@ export function LearnerScreen({ id }: { id: string }) {
           {enrollment.payment?.recovered ? (
             <Notice tone="info" icon={<ShieldCheck className="size-4" />} testId="payment-recovered">
               <strong>You&rsquo;re all set.</strong> PayPal took your payment but our app stopped before saving it, so we rebuilt your enrollment from PayPal. You paid once.
+            </Notice>
+          ) : null}
+          {enrollment.dispute && enrollment.status !== "refunded" ? (
+            <Notice tone="info" icon={<CircleAlert className="size-4" />} testId="learner-dispute">
+              <strong>You opened a PayPal dispute on this payment.</strong> {enrollment.dispute.status === "RESOLVED" ? "PayPal has closed it." : "The course team sees it and answers by the same guarantee rules. If a refund is due, a person approves it and PayPal pays it back."}
             </Notice>
           ) : null}
           {enrollment.status === "refunded" ? <RefundIssued enrollment={enrollment} /> : null}

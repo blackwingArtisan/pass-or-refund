@@ -54,6 +54,8 @@ export interface ReviewDecision {
 export interface Payment {
   orderId: string;
   orderStatus?: string;
+  /** When PayPal's PAYMENT.CAPTURE.COMPLETED webhook reached us for this payment. */
+  webhookAt?: string;
   captureId?: string;
   captureStatus?: string;
   capturedCents?: number;
@@ -94,6 +96,25 @@ export interface Refund {
   refundedCents?: number;
   captureStatus?: string;
   rereadAt?: string;
+  /** When PayPal's PAYMENT.CAPTURE.REFUNDED webhook reached us, and the status it carried. */
+  webhookAt?: string;
+  webhookStatus?: string;
+  /** Paid by accepting the learner's PayPal dispute, not by a refund call. */
+  viaDispute?: string;
+}
+
+/** A PayPal dispute the learner opened on this payment (CUSTOMER.DISPUTE.* webhooks). */
+export interface CourseDispute {
+  id: string;
+  reason: string;
+  status: string;
+  amountCents: number;
+  openedAt: string;
+  updatedAt: string;
+  /** PayPal's outcome once resolved, e.g. RESOLVED_BUYER_FAVOUR. */
+  outcome?: string;
+  /** What the course does about it, in plain words for the team. */
+  note?: string;
 }
 
 export interface Enrollment {
@@ -113,6 +134,7 @@ export interface Enrollment {
   /** The attempt after which the learner chose to skip the wait. */
   gapSkippedAfter?: number;
   refund?: Refund;
+  dispute?: CourseDispute;
 }
 
 export interface PendingApproval {
