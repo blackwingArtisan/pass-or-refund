@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
 import type { AuditEntry } from "@/lib/agent/audit";
 import { actionWords, actorWords, toolWords } from "@/lib/course/words";
+import { collapseRuns } from "@/lib/events/collapse";
 import { formatMoney } from "@/lib/money";
 
 type Line = Pick<AuditEntry, "seq" | "ts" | "action" | "actor" | "tool" | "amount" | "reason">;
@@ -18,7 +19,11 @@ interface Audit {
 }
 
 /** "Asked to · Refund the course", or just the action when no tool was involved. */
-const what = (entry: Line) => [actionWords(entry.action), toolWords(entry.tool)].filter(Boolean).join(": ");
+const what = (entry: Line, count = 1) => [actionWords(entry.action), toolWords(entry.tool)].filter(Boolean).join(": ") + (count > 1 ? ` ${count}×` : "");
+
+/** The same check, by the same actor, for the same reason, with no money on it: one line with a count. */
+const repeatKey = (entry: Line) => (entry.amount ? null : [entry.action, entry.tool ?? "", entry.actor, entry.reason ?? ""].join("|"));
+const seqs = (first: Line, last: Line) => (first.seq === last.seq ? `${first.seq}` : `${first.seq}–${last.seq}`);
 
 function ActivityLog() {
   const { kitFetch } = useKit();
@@ -35,7 +40,7 @@ function ActivityLog() {
     };
   }, [kitFetch]);
 
-  const lines = audit ? [...audit.entries].reverse() : [];
+  const lines = collapseRuns(audit ? [...audit.entries].reverse() : [], repeatKey).map(({ first, last, count }) => ({ entry: first, first, last, count }));
   return (
     <>
       <PageHeader title="Activity" description="Every money step the Guard saw, from request to approval to result." actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={load}>Refresh</Button>} />
@@ -66,11 +71,11 @@ function ActivityLog() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {lines.map((entry) => (
-                    <tr key={entry.seq} data-testid="audit-row">
-                      <td className="px-2 py-2 tabular-nums text-xs text-zinc-500">{entry.seq}</td>
+                  {lines.map(({ entry, first, last, count }) => (
+                    <tr key={entry.seq} data-testid="audit-row" data-count={count > 1 ? count : undefined}>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-xs text-zinc-500">{seqs(first, last)}</td>
                       <td className="whitespace-nowrap px-2 py-2 text-zinc-600">{new Date(entry.ts).toLocaleTimeString("en-US")}</td>
-                      <td className="px-2 py-2 text-zinc-900">{what(entry)}</td>
+                      <td className="px-2 py-2 text-zinc-900">{what(entry, count)}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums">{entry.amount ? formatMoney(entry.amount) : ""}</td>
                       <td className="px-2 py-2">{actorWords(entry.actor)}</td>
                       <td className="px-2 py-2 text-zinc-600">{entry.reason}</td>
@@ -79,10 +84,10 @@ function ActivityLog() {
                 </tbody>
               </table>
               <ul className="divide-y divide-zinc-100 md:hidden">
-                {lines.map((entry) => (
+                {lines.map(({ entry, count }) => (
                   <li key={entry.seq} data-testid="audit-item" className="py-3 text-sm">
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="font-medium text-zinc-900">{what(entry)}</p>
+                      <p className="font-medium text-zinc-900">{what(entry, count)}</p>
                       {entry.amount ? <span className="shrink-0 tabular-nums">{formatMoney(entry.amount)}</span> : null}
                     </div>
                     <p className="mt-0.5 text-xs text-zinc-500">
