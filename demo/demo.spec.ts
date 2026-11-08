@@ -21,7 +21,7 @@ async function card(page: Page, html: string, ms: number, background = "#f4f4f5"
       const el = document.createElement("div");
       el.id = "__demo_card";
       el.innerHTML = html;
-      Object.assign(el.style, { position: "fixed", inset: "0", zIndex: "2147483646", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 48px 160px", background, opacity: "0", transition: "opacity .4s", font: "16px/1.5 ui-sans-serif, system-ui, sans-serif" });
+      Object.assign(el.style, { position: "fixed", inset: "0", zIndex: "2147483646", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 48px 160px", background, opacity: "0", transition: "opacity .4s", font: "16px/1.5 var(--font-sans)" });
       document.body.appendChild(el);
       requestAnimationFrame(() => (el.style.opacity = "1"));
     },
@@ -41,13 +41,13 @@ async function card(page: Page, html: string, ms: number, background = "#f4f4f5"
 /** What a 69 looks like to both sides. The words are the app's own (learner-screen.tsx, team-screen.tsx). */
 const REVIEW_CARD = `
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1120px;width:100%">
-  <div style="grid-column:1/3;text-align:center;font:700 40px/1.2 ui-sans-serif,system-ui;color:#09090b;letter-spacing:-.01em">A score of 69 or 70 goes to a person</div>
+  <div style="grid-column:1/3;text-align:center;font:700 40px/1.2 var(--font-sans);color:#09090b;letter-spacing:-.01em">A score of 69 or 70 goes to a person</div>
   <div style="background:#fff;border:1px solid #e4e4e7;border-radius:18px;padding:24px">
-    <div style="font:600 13px ui-sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#4338ca">The learner sees</div>
+    <div style="font:600 13px var(--font-sans);text-transform:uppercase;letter-spacing:.06em;color:#4338ca">The learner sees</div>
     <div style="margin-top:12px;background:#f4f4f5;border-radius:12px;padding:16px;color:#3f3f46;font-size:18px"><b style="color:#09090b">Under review, answer within one business day.</b> Your score sits right at the pass mark, so a person will look at it. No refund yet.</div>
   </div>
   <div style="background:#fff;border:1px solid #e4e4e7;border-radius:18px;padding:24px">
-    <div style="font:600 13px ui-sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#4338ca">The course team sees</div>
+    <div style="font:600 13px var(--font-sans);text-transform:uppercase;letter-spacing:.06em;color:#4338ca">The course team sees</div>
     <div style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px;color:#3f3f46;font-size:18px"><b style="color:#09090b">Attempt 2 landed on 69, too close for the grader to call.</b> Three grades: 68, 69, 71. The middle one counts. Check each item that lost points, then decide.
       <div style="margin-top:10px;font-size:16px">&#9744; Says the burr must run heel to tip<br>&#9744; Says when the stone is ready</div>
     </div>
@@ -204,14 +204,14 @@ test("demo", async ({ page, request }) => {
   await card(
     page,
     `<div style="text-align:center;color:#fff">
-      <div style="font:600 18px ui-sans-serif;letter-spacing:.12em;text-transform:uppercase;opacity:.7">Pass or Refund</div>
-      <div style="margin-top:22px;font:700 54px/1.15 ui-sans-serif,system-ui;letter-spacing:-.02em">Courses that pay you back<br>if they can&rsquo;t teach you.</div>
-      <div style="margin-top:34px;display:flex;gap:16px;justify-content:center;font:500 22px ui-sans-serif">
+      <div style="font:600 18px var(--font-sans);letter-spacing:.12em;text-transform:uppercase;opacity:.7">Pass or Refund</div>
+      <div style="margin-top:22px;font:700 54px/1.15 var(--font-sans);letter-spacing:-.02em">Courses that pay you back<br>if they can&rsquo;t teach you.</div>
+      <div style="margin-top:34px;display:flex;gap:16px;justify-content:center;font:500 22px var(--font-sans)">
         <span style="background:rgba(255,255,255,.12);border-radius:999px;padding:10px 20px">Paid ${amount} with PayPal</span>
         <span style="background:rgba(255,255,255,.12);border-radius:999px;padding:10px 20px">Graded by Claude: ${firstScore}, then ${secondScore}</span>
         <span style="background:rgba(255,255,255,.12);border-radius:999px;padding:10px 20px">Refund ${refundId} COMPLETED</span>
       </div>
-      <div style="margin-top:30px;font:500 18px ui-sans-serif;opacity:.65">PayPal sandbox &middot; Claude Sonnet 5.5 &middot; built with Claude Code</div>
+      <div style="margin-top:30px;font:500 18px var(--font-sans);opacity:.65">PayPal sandbox &middot; Claude Sonnet 5.5 &middot; built with Claude Code</div>
     </div>`,
     5000,
     "radial-gradient(ellipse at top, #4338ca, #0b1020 70%)",

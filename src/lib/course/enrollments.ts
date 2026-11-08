@@ -9,6 +9,7 @@ import { singleton } from "@/lib/singleton";
 import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
 import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
+import { isSampleId } from "./sample-ids";
 import type { Enrollment, EnrollmentStatus, EnrollmentView, GuaranteeDecision, PendingApproval } from "./types";
 
 const enrollments = () => collection<Enrollment>("enrollments");
@@ -29,6 +30,8 @@ export function createEnrollment(learnerName: string, learnerEmail: string): Enr
     attempts: [],
   });
 }
+
+export const enrollmentIfAny = (id: string): Enrollment | undefined => enrollments().get(id);
 
 export function requireEnrollment(id: string): Enrollment {
   const enrollment = enrollments().get(id);
@@ -120,7 +123,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
 export function listEnrollments(): EnrollmentView[] {
   return enrollments()
     .list()
-    .filter((e) => e.status !== "unpaid")
+    .filter((e) => e.status !== "unpaid" && !isSampleId(e.id))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(viewEnrollment);
 }
