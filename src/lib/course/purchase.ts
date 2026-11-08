@@ -35,8 +35,19 @@ function fromCompletedOrder(enrollment: Enrollment, order: Order): Enrollment | 
   return recordPayment(enrollment, { orderId: order.id, orderStatus: order.status, captureId: capture.id, captureStatus: capture.status, capturedCents: cents, paidAt: new Date().toISOString(), payerId: payerIdOf(order), payerEmail: payerEmailOf(order), recovered: true });
 }
 
+/** PayPal's window and the page's own check can both finish one purchase at once: they share the work. */
+const finishing = singleton("course:finishing-purchase", () => new Map<string, Promise<Enrollment>>());
+
 /** Called when anyone looks at an unpaid enrollment, so a reload is enough to get a learner unstuck. */
 export async function recoverPayment(enrollment: Enrollment): Promise<Enrollment> {
+  // A capture is still on its way back from PayPal: that's this purchase finishing, not one we lost.
+  const running = finishing.get(enrollment.id);
+  if (running) return running.catch(() => requireEnrollment(enrollment.id));
+  return paidAtPayPal(enrollment);
+}
+
+/** The enrollment rebuilt from PayPal's order if PayPal took the money, else as it was. */
+async function paidAtPayPal(enrollment: Enrollment): Promise<Enrollment> {
   const orderId = enrollment.payment?.orderId;
   if (enrollment.status !== "unpaid" || !orderId) return enrollment;
   const order = await getPayPal().orders.get(orderId).catch(() => null);
@@ -74,8 +85,6 @@ export async function startPurchase(learnerName: string, learnerEmail: string, o
   return { enrollment: saveEnrollment({ ...created, payment: { orderId: order.id, orderStatus: order.status } }), orderId: order.id };
 }
 
-/** PayPal's window and the page's own check can both finish one purchase at once: they share the work. */
-const finishing = singleton("course:finishing-purchase", () => new Map<string, Promise<Enrollment>>());
 
 export function completePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
   const running = finishing.get(id);
@@ -105,7 +114,7 @@ async function capturePurchase(id: string, orderId: string, channel: string): Pr
   const enrollment = requireEnrollment(id);
   if (enrollment.payment?.orderId !== orderId) throw new HttpError(409, "That PayPal order doesn't belong to this purchase.", "conflict");
   if (enrollment.status !== "unpaid") return enrollment;
-  const recovered = await recoverPayment(enrollment);
+  const recovered = await paidAtPayPal(enrollment);
   if (recovered.status !== "unpaid") return recovered;
 
   const guard = new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy });
