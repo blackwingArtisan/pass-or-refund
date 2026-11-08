@@ -7,7 +7,7 @@ import { Activity, BarChart3, GraduationCap, Menu, Users, X, type LucideIcon } f
 import { appConfig } from "@/app.config";
 import { cn } from "../ui/cn";
 import { AppLogo } from "./app-logo";
-import { ModeBadges } from "./mode-badges";
+import { JudgeTools } from "./judge-tools";
 
 const ICONS: Record<string, LucideIcon> = { "/course": GraduationCap, "/team": Users, "/cohort": BarChart3, "/activity": Activity };
 
@@ -50,8 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Nav />
           </Suspense>
         </div>
-        <ModeBadges vertical className="px-1" />
-        <p className="mt-4 px-1 text-[11px] leading-relaxed text-zinc-400">Sandbox only. No live PayPal calls are possible from this app.</p>
+        <JudgeTools />
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
@@ -65,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Suspense>
             <Nav onNavigate={() => setOpen(false)} />
           </Suspense>
-          <ModeBadges className="mt-3" />
+          <JudgeTools className="mt-3" />
         </div>
       ) : null}
 

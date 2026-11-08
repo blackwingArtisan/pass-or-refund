@@ -19,7 +19,8 @@ import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
-import { JudgeToggle, useJudgeMode } from "./judge-mode";
+import { useCleanMode } from "./clean-mode";
+import { useJudgeMode } from "./judge-mode";
 import { Guarantee } from "./guarantee";
 import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
@@ -65,27 +66,26 @@ function Lessons() {
 
 function Quiz({ attemptNumber, grading, busy, problem, onSubmit }: { attemptNumber: number; grading: boolean; busy: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
   const [answers, setAnswers] = useState(blankAnswers);
-  const [judge, setJudge] = useJudgeMode();
+  const [judge] = useJudgeMode();
+  const clean = useCleanMode();
   const nothingWritten = Object.values(answers).every((a) => a.trim() === "");
   return (
     <Card id="final-check">
       <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={`Four questions, 25 points each. Write in your own words. Pass mark ${course.passMark}.`} />
       <CardBody className="space-y-5">
-        <div className="space-y-2">
-          <JudgeToggle on={judge} onChange={setJudge} />
-          {judge ? (
-            <div data-testid="sample-buttons" className="rounded-lg bg-zinc-50 px-3 py-2.5">
-              <p className="text-xs text-zinc-600">Fill all four answers with a prepared example, then submit it or edit it first.</p>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                {SAMPLE_BUTTONS.map(({ id, label }) => (
-                  <Button key={id} size="sm" variant="secondary" onClick={() => setAnswers(samples[id])} data-testid={`sample-${id}`} disabled={grading} className={id === "inject" ? "col-span-2" : undefined}>
-                    {label}
-                  </Button>
-                ))}
-              </div>
+        {/* Prepared answers, only after a judge turns on Judge shortcuts in the For judges menu. */}
+        {judge && !clean ? (
+          <div data-testid="sample-buttons" className="rounded-lg bg-zinc-50 px-3 py-2.5">
+            <p className="text-xs text-zinc-600">Fill all four answers with a prepared example, then submit it or edit it first.</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {SAMPLE_BUTTONS.map(({ id, label }) => (
+                <Button key={id} size="sm" variant="secondary" onClick={() => setAnswers(samples[id])} data-testid={`sample-${id}`} disabled={grading} className={id === "inject" ? "col-span-2" : undefined}>
+                  {label}
+                </Button>
+              ))}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         {rubric.questions.map((question, index) => (
           <Field key={question.id} label={`Question ${index + 1}`} hint={question.text} htmlFor={question.id}>
             <Textarea
@@ -359,7 +359,7 @@ export function LearnerScreen({ id }: { id: string }) {
         <div className="min-w-0 space-y-6">
           {enrollment.id === SAMPLE_PASS_ID ? (
             <Notice tone="info" icon={<Award className="size-4" />} testId="sample-pass">
-              <strong>Sample learner.</strong> {enrollment.learnerName} is made up, so you can see what passing looks like without passing yourself. Her answers are the course&rsquo;s strong sample answers, graded with recorded verdicts and added up by the same code. No PayPal payment was made.
+              <strong>Sample learner.</strong> {enrollment.learnerName} is made up, so you can see what passing looks like without passing yourself. Her answers are the course&rsquo;s strong sample answers, graded once ahead of time and added up by the same code. No PayPal payment was made.
             </Notice>
           ) : null}
           {enrollment.status === "unpaid" ? (

@@ -49,7 +49,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
           <h3 className="font-semibold text-zinc-900">Attempt {attempt.number}</h3>
           <p className="text-sm text-zinc-500">{attempt.runs.length > 1 ? "This was close, so it was graded three times. The middle score counts." : `Pass mark ${rubric.passMark} out of 100.`}</p>
           <p data-testid={`grader-${attempt.number}`} className="text-xs text-zinc-500">
-            {run.mocked ? "Graded from recorded verdicts (AI mock mode)." : `Graded by ${run.model ?? "Claude"} against the public rubric. Code added up the points.`}
+            {run.mocked ? "Graded against the public rubric. Code added up the points." : `Graded by ${run.model ?? "Claude"} against the public rubric. Code added up the points.`}
           </p>
         </div>
         <div className="flex items-center gap-3">

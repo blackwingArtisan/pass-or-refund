@@ -350,6 +350,8 @@ test.describe("the story on the first screen", () => {
     await expect(page.getByTestId("for-judges")).toContainText("Judge shortcuts");
     await buy(page, request, "Juno Judge");
     const toggle = page.getByTestId("judge-toggle");
+    await expect(toggle).toBeHidden();
+    await page.getByTestId("judge-tools").locator("summary").click();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
     await toggle.click();
@@ -357,10 +359,63 @@ test.describe("the story on the first screen", () => {
     await page.getByTestId("sample-fail1").click();
     await expect(page.getByTestId("answer-q1")).not.toHaveValue("");
     await page.reload();
+    await page.getByTestId("judge-tools").locator("summary").click();
     await expect(page.getByTestId("judge-toggle")).toHaveAttribute("aria-checked", "true");
     await page.getByTestId("judge-toggle").click();
     await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
     await visitor.close();
+  });
+
+  test("learner and creator screens show only the product: judge tools wait in one For judges menu, and clean mode hides it", { tag: "@live" }, async ({ browser, request }) => {
+    const baseURL = test.info().project.use.baseURL!;
+    // The activity timeline keeps its per-call PayPal and AI labels: that is the product's evidence, not judge chrome.
+    const chrome = /recorded verdicts|Judge shortcuts|prepared example|\$\d+\.\d+ \/ \$\d/;
+    // A visitor with nothing saved: only the test-run cookie.
+    const visitor = await browser.newContext({ baseURL, storageState: { cookies: testRunState(baseURL).cookies, origins: [] } });
+    const page = await visitor.newPage();
+    await buy(page, request, "Nell Neutral");
+    const learnPage = page.url();
+    await expect(page.getByTestId("submit-attempt")).toBeVisible();
+    const tools = page.getByTestId("judge-tools");
+    await expect(tools).toHaveCount(1);
+    await expect(page.getByTestId("mode-badges")).toBeHidden();
+    await expect(page.getByTestId("judge-toggle")).toBeHidden();
+    await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
+    expect(await page.locator("main").innerText()).not.toMatch(chrome);
+    await page.goto("/cohort");
+    await expect(page.getByRole("heading", { name: "Cohort results" })).toBeVisible();
+    await expect(page.getByTestId("mode-badges")).toBeHidden();
+    expect(await page.locator("main").innerText()).not.toMatch(chrome);
+    // Opening the menu shows the modes and the switch.
+    await tools.locator("summary").click();
+    await expect(page.getByTestId("mode-badges")).toBeVisible();
+    await expect(page.getByTestId("judge-toggle")).toBeVisible();
+    await visitor.close();
+
+    // Clean mode, as the demo records it: no For judges menu or box, no prepared answers, even with shortcuts saved.
+    const clean = await browser.newContext({
+      baseURL,
+      storageState: { cookies: testRunState(baseURL).cookies, origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "por_clean", value: "1" }, { name: "por_judge", value: "1" }] }] },
+    });
+    const recorded = await clean.newPage();
+    await recorded.goto("/");
+    await expect(recorded.getByTestId("hero-cta")).toBeVisible();
+    await expect(recorded.getByTestId("for-judges")).toHaveCount(0);
+    await recorded.goto(learnPage);
+    await expect(recorded.getByTestId("submit-attempt")).toBeVisible();
+    await expect(recorded.getByTestId("judge-tools")).toHaveCount(0);
+    await expect(recorded.getByTestId("sample-buttons")).toHaveCount(0);
+    await expect(recorded.getByTestId("mode-badges")).toHaveCount(0);
+    await clean.close();
+  });
+
+  test("the home page is about two screens at 1440 wide", { tag: "@live" }, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await expect(page.getByTestId("cohort-stats")).toBeVisible();
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    console.log("Home page height at 1440:", height, "px =", (height / 900).toFixed(2), "screens");
+    expect(height).toBeLessThanOrEqual(900 * 2.4);
   });
 
   test("a mistyped address has a way back, lesson 1 reads in full before buying, and /cohort says why its numbers move", async ({ page, request }) => {

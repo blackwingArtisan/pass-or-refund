@@ -64,7 +64,7 @@ export function StoryEyebrow() {
 /** The buyer evidence, below the product: what goes wrong today, and what this app does about it. */
 export function Story() {
   return (
-    <section id="why" data-testid="story" className="border-t border-zinc-200/70 bg-zinc-50 py-14">
+    <section id="why" data-testid="story" className="border-t border-zinc-200/70 bg-zinc-50 py-10">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why it matters</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Course promises are hard to check before you pay</h2>
