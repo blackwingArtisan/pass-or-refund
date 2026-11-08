@@ -135,6 +135,8 @@ export interface Refund {
   declinedBy?: string;
   declineNote?: string;
   refundId?: string;
+  /** PayPal-Debug-Id of the refund call: PayPal's own reference for it, shown on the refund card. */
+  debugId?: string;
   /** Re-read from PayPal after the refund, not taken from our own request. */
   refundStatus?: string;
   /** PayPal's reason when the refund is PENDING. ECHECK: it is being paid from the seller's bank. */

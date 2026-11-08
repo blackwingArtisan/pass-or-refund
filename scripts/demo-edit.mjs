@@ -16,9 +16,12 @@ const plan = JSON.parse(fs.readFileSync("videos/demo-edit.json", "utf8"));
 
 const sources = [...new Set(plan.parts.map((p) => p.src))];
 const inputs = sources.flatMap((src) => ["-i", plan.videos[src]]);
+const [W, H] = (plan.size ?? "1280x800").split("x").map(Number);
+/** A part with a zoom eases in over 1.5 s to `to` times, toward its anchor, and holds there. */
+const zoomOf = (z) => (z ? `,zoompan=z='min(1+${(z.to - 1).toFixed(3)}*on/45,${z.to})':x='(iw-iw/zoom)*${z.ax.toFixed(3)}':y='(ih-ih/zoom)*${z.ay.toFixed(3)}':d=1:s=${W}x${H}:fps=30` : "");
 const filters = plan.parts.map((part, i) => {
   const trim = `trim=start=${part.from.toFixed(2)}${part.to === undefined ? "" : `:end=${part.to.toFixed(2)}`}`;
-  return `[${sources.indexOf(part.src)}:v]${trim},setpts=PTS-STARTPTS,scale=1440:900:force_original_aspect_ratio=decrease,pad=1440:900:(ow-iw)/2:(oh-ih)/2:color=0x18181b,fps=30,setsar=1[v${i}]`;
+  return `[${sources.indexOf(part.src)}:v]${trim},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x18181b,fps=30${zoomOf(part.zoom)},setsar=1[v${i}]`;
 });
 const concat = `${plan.parts.map((_, i) => `[v${i}]`).join("")}concat=n=${plan.parts.length}:v=1:a=0[v]`;
 

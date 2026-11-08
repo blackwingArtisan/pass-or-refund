@@ -7,7 +7,7 @@ import { startStep } from "../events/bus";
 import { formatMoney, sumMoney, type Money } from "../money";
 import type { PayPalApi } from "./api";
 import { ingestPayPalResource } from "./ledger";
-import { runWithCallMeta, type CallMeta } from "./meta";
+import { recordCallMeta, runWithCallMeta, type CallMeta } from "./meta";
 import { OPERATIONS, operationPath, type OperationKey, type OperationSpec } from "./operations";
 
 function amountFrom(value: unknown): Money | undefined {
@@ -107,6 +107,7 @@ export function instrument(impl: PayPalApi): PayPalApi {
         const t0 = performance.now();
         try {
           const result = await runWithCallMeta(meta, () => target[method](...args));
+          recordCallMeta(meta); // also to a caller that asked for this call's debug id
           ingestPayPalResource(result, requestBody);
           const refresh = REFRESH_AFTER[op];
           if (refresh && id) await refresh(impl, id).then((r) => ingestPayPalResource(r), () => undefined);
