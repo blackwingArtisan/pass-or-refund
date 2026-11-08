@@ -30,6 +30,7 @@ export const checkRefundPolicy = (enrollmentId: string) =>
         attempts: enrollment.attempts.map((a) => ({ number: a.number, score: a.score, outcome: a.outcome, complete: attemptComplete(a), near_copy_of: a.nearCopyOf, reviewed_study_list: a.reviewedStudyList, flagged: a.flagged })),
         paid: capture.amount,
         capture_status: capture.status,
+        open_dispute: enrollment.dispute && enrollment.dispute.status !== "RESOLVED" ? { reason: enrollment.dispute.reason, status: enrollment.dispute.status } : null,
       };
     },
   });

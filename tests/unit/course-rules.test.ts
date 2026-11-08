@@ -330,15 +330,21 @@ describe("the app stops between PayPal paying and our record", () => {
     const { id } = await buy();
     await failTwice(id);
     const approval = await approvalOf(id);
-    await getPayPal().payments.refundCapture(requireEnrollment(id).payment!.captureId!);
-    getApprovals().decide(approval.id, "approved", "test");
-    await statusOf(id, "refund_blocked");
-    await vi.waitFor(() => expect(activeRefunds().has(id)).toBe(false), WAIT);
+    // PayPal's REFUNDED webhook would record it at once (course-webhooks.test.ts). Here it never arrives.
+    getMockPayPal()!.loseWebhooks(true);
+    try {
+      await getPayPal().payments.refundCapture(requireEnrollment(id).payment!.captureId!);
+      getApprovals().decide(approval.id, "approved", "test");
+      await statusOf(id, "refund_blocked");
+      await vi.waitFor(() => expect(activeRefunds().has(id)).toBe(false), WAIT);
 
-    const refundCapture = vi.spyOn(getPayPal().payments, "refundCapture");
-    const { enrollment } = await retryRefund(id, CHANNEL);
-    expect(enrollment).toMatchObject({ status: "refunded", refund: { refundStatus: "COMPLETED", error: undefined } });
-    expect(refundCapture).not.toHaveBeenCalled();
+      const refundCapture = vi.spyOn(getPayPal().payments, "refundCapture");
+      const { enrollment } = await retryRefund(id, CHANNEL);
+      expect(enrollment).toMatchObject({ status: "refunded", refund: { refundStatus: "COMPLETED", error: undefined } });
+      expect(refundCapture).not.toHaveBeenCalled();
+    } finally {
+      getMockPayPal()!.loseWebhooks(false);
+    }
   });
 });
 

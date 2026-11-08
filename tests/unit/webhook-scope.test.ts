@@ -43,8 +43,14 @@ describe("isOtherAppsEvent", () => {
     expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.REFUNDED", refundOf("CAP-THEIRS")))).toBe(true);
   });
 
+  it("judges disputes by the capture they're about", () => {
+    const disputeOn = (id?: string) => ({ dispute_id: "PP-D-1", disputed_transactions: id ? [{ seller_transaction_id: id }] : [] });
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", disputeOn("CAP-MINE")))).toBe(false);
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", disputeOn("CAP-THEIRS")))).toBe(true);
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.RESOLVED", disputeOn()))).toBe(true);
+  });
+
   it("keeps events that name nothing to check", () => {
-    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-1" }))).toBe(false);
     expect(isOtherAppsEvent(event("PAYMENT.PAYOUTSBATCH.SUCCESS", { batch_header: { payout_batch_id: "B1" } }))).toBe(false);
   });
 });
