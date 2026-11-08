@@ -123,7 +123,7 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           <div>
             <p className="font-semibold text-zinc-900">{enrollment.learnerName}</p>
             <p className="text-sm text-zinc-500">
-              {enrollment.learnerEmail}. Paid {enrollment.payment?.capturedCents === undefined ? "nothing yet" : formatCents(enrollment.payment.capturedCents)}. {enrollment.attempts.length === 0 ? "No attempts yet." : `Scores: ${enrollment.attempts.map((a) => a.score).join(", ")}.`}
+              Paid {enrollment.payment?.capturedCents === undefined ? "nothing yet" : formatCents(enrollment.payment.capturedCents)}. {enrollment.attempts.length === 0 ? "No attempts yet." : `Scores: ${enrollment.attempts.map((a) => a.score).join(", ")}.`}
             </p>
           </div>
           <span className="flex items-center gap-3">
@@ -198,7 +198,7 @@ export function TeamScreen() {
       <PageHeader eyebrow="Course team" title="Refunds and learners" description="Policy decides when a refund is due. A person approves it here before any money moves." />
       <p data-testid="team-access-rule" className="mb-4 flex items-start gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-zinc-500" />
-        <span>This page is open to anyone on purpose, so judges can approve a refund without an account. This app only runs on PayPal&rsquo;s sandbox, so no real money can move. A real course would put this page behind a staff login.</span>
+        <span>This page sits behind a passcode that is printed for judges on the home page, so judges can approve a refund without an account. Learners&rsquo; emails never reach it. This app only runs on PayPal&rsquo;s sandbox, so no real money can move. A real course would use staff logins instead.</span>
       </p>
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-4">

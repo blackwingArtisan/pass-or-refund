@@ -98,10 +98,28 @@ async function approveOnTeam(page: Page, id: string) {
   await page.getByTestId("refund-waiting").getByRole("link").click();
   const team = page.getByTestId(`enrollment-${id}`);
   await expect(team.getByTestId("approval-reasons")).toContainText("first refund", { timeout: 60_000 });
+  await expect(team).toContainText("Every refund needs a person's approval.");
+  await expect(team).not.toContainText("refund_course_purchase");
   await team.getByTestId("approve-button").click();
   await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
   return team;
 }
+
+/** The course team passcode, read the way a judge reads it: from the For judges box on the home page. */
+async function passcodeFromHome(request: APIRequestContext) {
+  const html = await (await request.get("/")).text();
+  const shown = /data-testid="team-passcode-shown"[^>]*>([^<]+)</.exec(html)?.[1];
+  expect(shown, "the home page prints the team passcode").toBeTruthy();
+  return shown!;
+}
+
+/** Signs a browser (and its API calls) in as the course team. */
+async function unlockTeam(request: APIRequestContext) {
+  const res = await request.post("/api/team/session", { data: { passcode: await passcodeFromHome(request) } });
+  expect(res.ok()).toBe(true);
+}
+
+const EMAIL_SHAPE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
 
 const enrollmentOf = async (request: APIRequestContext, id: string) => (await (await request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
 
@@ -115,6 +133,67 @@ function watchCode(page: Page) {
   });
   return async () => (await Promise.all(bodies)).join("\n");
 }
+
+// Every flow plays both sides, so each test's browser and API calls start signed in as the course team.
+test.beforeEach(async ({ page, request }) => {
+  await unlockTeam(page.request);
+  await unlockTeam(request);
+});
+
+test.describe("who sees what", () => {
+  test("the course team view needs the passcode from the For judges box, and no API sends an email", async ({ page, request, browser }) => {
+    const id = await buy(page, request, "Gita <i>Gate</i>", newEmail("Gita Gate"));
+    await expect(page.getByText("Gita Gate").first()).toBeVisible();
+
+    // A new visitor: no passcode yet.
+    const stranger = await browser.newContext();
+    const visitor = await stranger.newPage();
+    await visitor.goto("/");
+    const passcode = (await visitor.getByTestId("team-passcode-shown").innerText()).trim();
+    expect(passcode.length).toBeGreaterThan(3);
+    for (const path of ["/api/team", "/api/audit", "/api/agent/approvals", "/api/paypal/ledger", "/api/agent/runs"]) {
+      expect(`${path} ${(await stranger.request.get(path)).status()}`).toBe(`${path} 401`);
+    }
+    expect((await stranger.request.post("/api/agent/approvals/ap_nope", { data: { decision: "approved" } })).status()).toBe(401);
+    expect((await stranger.request.post(`/api/enrollments/${id}/settle`, { data: { outcome: "pass", note: "x", checkedItems: [] } })).status()).toBe(401);
+    for (const path of ["/team", "/activity"]) {
+      await visitor.goto(path);
+      await expect(visitor.getByTestId("team-passcode-form")).toBeVisible();
+      await expect(visitor.getByTestId(`enrollment-${id}`)).toHaveCount(0);
+    }
+    await visitor.getByTestId("team-passcode").fill("not-it");
+    await visitor.getByTestId("team-passcode-submit").click();
+    await expect(visitor.getByTestId("team-passcode-form")).toContainText("isn't right");
+    await visitor.getByTestId("team-passcode").fill(passcode);
+    await visitor.getByTestId("team-passcode-submit").click();
+    await expect(visitor.getByRole("heading", { name: "Activity" })).toBeVisible();
+    await expect(visitor.getByTestId("audit-row").first()).toBeVisible();
+    const activity = await visitor.locator("main").innerText();
+    expect(activity).toContain("Take the course payment");
+    expect(activity).not.toMatch(/capture_course_payment|refund_course_purchase|tool\.requested|tool\.executed/);
+    await visitor.screenshot({ path: "screenshots/activity-plain.png" });
+    await visitor.goto("/team");
+    await expect(visitor.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
+    await expect(visitor.getByTestId("team-access-rule")).toContainText("passcode");
+    await stranger.close();
+
+    // The test suite's buyers are hidden from a real visitor's list, and shown to the suite's own.
+    const judge = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    await unlockTeam(judge.request);
+    const judgeIds = ((await (await judge.request.get("/api/team")).json()) as { enrollments: EnrollmentView[] }).enrollments.map((e) => e.id);
+    expect(judgeIds).not.toContain(id);
+    await judge.close();
+    const ours = await (await page.request.get("/api/team")).text();
+    expect(ours).toContain(id);
+
+    // No email reaches a screen: not the team list, not the enrollment, not the audit log.
+    for (const path of ["/api/team", `/api/enrollments/${id}`, "/api/audit", "/api/paypal/ledger", "/api/agent/approvals"]) {
+      const body = await (await page.request.get(path)).text();
+      expect(`${path} ${EMAIL_SHAPE.exec(body)?.[0] ?? "none"}`).toBe(`${path} none`);
+    }
+    if ((await mode(request)) === "sandbox") expect((await (await request.get("/api/kit/status")).json()).paypal.buyerEmail).toBe("");
+  });
+});
 
 test.describe("mock-safe flows", () => {
   test.skip(LIVE_AI, "These flows use mock AI. The paid run is the real AI test.");
@@ -566,7 +645,7 @@ test.describe("mock-safe flows", () => {
 
   test("/team states its access rule", async ({ page }) => {
     await page.goto("/team");
-    await expect(page.getByTestId("team-access-rule")).toContainText("open to anyone on purpose");
+    await expect(page.getByTestId("team-access-rule")).toContainText("behind a passcode that is printed for judges");
     await expect(page.getByTestId("team-access-rule")).toContainText("no real money can move");
   });
 

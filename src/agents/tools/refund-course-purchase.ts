@@ -54,6 +54,7 @@ async function checked(enrollmentId: string, requested: string, paypal: PayPalAp
 export const refundCoursePurchase = (enrollmentId: string) =>
   defineTool({
     name: REFUND_COURSE_PURCHASE,
+    label: "Every refund",
     description: "Propose refunding this learner. It pauses for a person to approve, and no money moves until they do. The amount must be exactly what the learner paid. Give your reasons: they are shown to the person deciding.",
     risk: "money",
     schema: z.object({

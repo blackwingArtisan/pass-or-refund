@@ -11,7 +11,8 @@ export const GET = route(async () => {
   const env = getEnv();
   return {
     app: { name: appConfig.name, slug: appConfig.slug },
-    paypal: { mode: env.paypalMode, clientId: getBrowserClientId() ?? null, buyerEmail: env.sandboxBuyerEmail, webhookConfigured: Boolean(env.paypalWebhookId), testCard: env.paypalMode === "sandbox" && env.demoTestCard },
+    // The mock's made-up buyer fills its checkout. A sandbox buyer's login stays on the server.
+    paypal: { mode: env.paypalMode, clientId: getBrowserClientId() ?? null, buyerEmail: env.paypalMode === "mock" ? env.sandboxBuyerEmail : "", webhookConfigured: Boolean(env.paypalWebhookId), testCard: env.paypalMode === "sandbox" && env.demoTestCard },
     ai: { mode: isAiLive() ? "live" : "mock", models: { default: modelLabel(AI_MODELS.default), smart: modelLabel(AI_MODELS.smart) }, budget: getBudget().status() },
     policy: { ...DEFAULT_POLICY, ...appConfig.agentPolicy },
   };

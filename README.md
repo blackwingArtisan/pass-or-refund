@@ -119,7 +119,9 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - Sandbox only; no live payments are possible.
 - Automated sandbox tests pay with PayPal's test card, and the mock flow uses the simulated approval.
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
-- `/team` is open to anyone on purpose, and the page says so: judges need to approve a refund without an account, and only sandbox money can move. A real deployment would put it behind a staff login.
+- `/team` and `/activity` sit behind a passcode that the home page prints in a For judges box (`lena-49`, or `TEAM_PASSCODE`). It keeps crawlers and passers-by out; it isn't a staff login, and the page says so. Only sandbox money can move. A real deployment would use staff logins.
+- No API sends a learner's email: enrollment views drop it, the timeline stream and the PayPal ledger hide every address, and the audit API sends only what /activity shows.
+- The browser test suites set a `por_test_run` cookie on the app's own address. Their learners are kept off `/team` and out of the cohort numbers for everyone else, so a hosted test run leaves nothing for a judge to wade through.
 - There's no cap on the number of attempts.
 - One refund per PayPal payer is matched on PayPal's account id or PayPal's email for the buyer, never on the card number, which would merge everyone who uses the shared test card. A guest who gives PayPal a different email each time still looks like a new buyer. The server-side test card (tests only) gives PayPal no buyer at all. The mock suite proves both matches; the sandbox can't choose its payer.
 - A proposal waiting for a person lasts an hour and dies if the server restarts. The refund then shows as blocked and the team can review it again.
