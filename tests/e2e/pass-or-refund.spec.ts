@@ -226,7 +226,7 @@ test.describe("who sees what", () => {
 });
 
 test.describe("the story on the first screen", () => {
-  test("the home page leads with the researched headline and sourced pain points, and links a sample certificate", async ({ page, request }) => {
+  test("the home page leads with the researched headline and sourced pain points", async ({ page }) => {
     await page.goto("/");
     const story = page.getByTestId("story");
     await expect(page.getByTestId("story-headline")).toContainText("up to 86%");
@@ -236,10 +236,34 @@ test.describe("the story on the first screen", () => {
     const pains = page.getByTestId("story-pains").locator("li");
     await expect(pains).toHaveCount(4);
     for (const pain of await pains.all()) await expect(pain.locator("a[href^='https://']")).toHaveCount(1);
-    // The story sits above the fold on a laptop screen.
-    const box = await page.getByTestId("story-headline").boundingBox();
-    expect(box!.y + box!.height).toBeLessThan(900);
     await page.screenshot({ path: "screenshots/landing-story.png" });
+  });
+
+  for (const screen of [
+    { name: "a laptop", width: 1440, height: 900 },
+    { name: "a phone", width: 390, height: 844 },
+  ]) {
+    test(`on ${screen.name}, the first screen says what it is, with the button and the three steps`, { tag: "@live" }, async ({ page }) => {
+      await page.setViewportSize({ width: screen.width, height: screen.height });
+      await page.goto("/");
+      const inView = async (testId: string) => {
+        const box = await page.getByTestId(testId).boundingBox();
+        expect(box, testId).not.toBeNull();
+        expect(box!.y + box!.height, `${testId} bottom on ${screen.name}`).toBeLessThanOrEqual(screen.height);
+      };
+      // The research is one line with its source, not a panel in front of the product.
+      await expect(page.getByTestId("story-headline")).toContainText("up to 86%");
+      expect((await page.getByTestId("story-headline").boundingBox())!.height).toBeLessThan(screen.width < 500 ? 110 : 50);
+      await expect(page.getByTestId("hero-title")).toContainText("guarantee");
+      await expect(page.getByTestId("hero-cta")).toHaveText(/Try it as a learner/);
+      await expect(page.getByTestId("hero-steps").locator("li")).toHaveCount(3);
+      for (const id of ["story-headline", "hero-title", "hero-cta", "hero-steps"]) await inView(id);
+      await page.screenshot({ path: `screenshots/first-screen-${screen.width}.png` });
+    });
+  }
+
+  test("the sample certificate is one click from the story", async ({ page, request }) => {
+    await page.goto("/");
 
     await page.getByTestId("sample-pass-link").click();
     await page.waitForURL(/\/learn\/sample_pass/);

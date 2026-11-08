@@ -7,6 +7,7 @@ import { teamPasscode } from "@/lib/course/team-access";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 import { CohortStats } from "../course/rubric-receipt";
+import { StoryEyebrow } from "./story";
 
 /**
  * Landing page sections. Content comes from appConfig.landing and creatorCase().
@@ -158,28 +159,46 @@ function RefundPreview() {
   );
 }
 
+/** The three steps, small enough to sit in the first screen beside the button. */
+function HeroSteps() {
+  return (
+    <ol data-testid="hero-steps" className="mt-6 grid gap-2 sm:grid-cols-3">
+      {appConfig.landing.steps.map((s, i) => (
+        <li key={s.title} className="flex items-start gap-2.5 rounded-xl border border-zinc-200 bg-white/80 px-3 py-2.5">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-semibold text-brand-foreground">{i + 1}</span>
+          <span className="text-sm font-medium leading-snug text-zinc-900">{s.title}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function Hero() {
   const l = appConfig.landing;
   return (
     <section className="relative overflow-hidden">
       <div className="bg-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" aria-hidden />
       <div className="absolute -top-40 left-1/2 h-[480px] w-[900px] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" aria-hidden />
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-16">
+      <div className="relative mx-auto max-w-6xl px-4 pt-5 sm:px-6 lg:pt-6">
+        <StoryEyebrow />
+      </div>
+      <div className="relative mx-auto grid max-w-6xl items-start gap-10 px-4 pb-14 pt-4 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-6">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-sm font-medium text-brand-700 shadow-sm">
             <Sparkles className="size-4" /> {l.eyebrow}
           </span>
-          <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]">{l.headline}</h1>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-zinc-600">{l.subheadline}</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <ButtonLink href={l.primaryCta.href} size="lg">
+          <h1 data-testid="hero-title" className="mt-4 text-[34px] font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[52px]">{l.headline}</h1>
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600 sm:text-lg">{l.subheadline}</p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <ButtonLink href={l.primaryCta.href} size="lg" data-testid="hero-cta">
               {l.primaryCta.label} <ArrowRight className="size-4" />
             </ButtonLink>
-            <ButtonLink href={l.secondaryCta.href} size="lg" variant="secondary">
+            <ButtonLink href={l.secondaryCta.href} size="lg" variant="secondary" className="hidden sm:inline-flex">
               {l.secondaryCta.label}
             </ButtonLink>
           </div>
-          <p className="mt-6 flex items-center gap-2 text-sm text-zinc-500">
+          <HeroSteps />
+          <p className="mt-5 flex items-center gap-2 text-sm text-zinc-500">
             <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
           <ForJudges />

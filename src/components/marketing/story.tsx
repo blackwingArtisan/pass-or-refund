@@ -46,24 +46,34 @@ function Source({ label, href }: { label: string; href: string }) {
   );
 }
 
+/** The research headline as one line above the product, with its source. */
+export function StoryEyebrow() {
+  return (
+    <p data-testid="story-headline" className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm leading-snug text-zinc-600">
+      <span>
+        <span className="font-semibold text-zinc-900">Why it matters:</span> a coding school advertised job placement of up to 86%. A US regulator found it was closer to half.
+      </span>
+      <a href={HEADLINE.source.href} target="_blank" rel="noreferrer" data-testid="story-source" className="inline-flex items-center gap-0.5 text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
+        {HEADLINE.source.label}
+        <ArrowUpRight className="size-3" aria-hidden />
+      </a>
+    </p>
+  );
+}
+
+/** The buyer evidence, below the product: what goes wrong today, and what this app does about it. */
 export function Story() {
   return (
-    <section id="why" data-testid="story" className="border-b border-zinc-200/70 bg-zinc-950 py-10 text-white">
+    <section id="why" data-testid="story" className="border-t border-zinc-200/70 bg-zinc-50 py-14">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <p className="text-sm font-semibold uppercase tracking-wider text-brand-200">Why it matters</p>
-        <p data-testid="story-headline" className="mt-2 max-w-4xl text-2xl font-semibold leading-snug tracking-tight sm:text-3xl">
-          {HEADLINE.text}
-        </p>
-        <p className="mt-3 max-w-3xl text-zinc-300">
-          Course promises are hard to check before you pay, and buyers say refunds get denied, stalled or re-ruled after they ask. Pass or Refund makes the promise testable: a public rubric, a graded final check, and two fails send a real PayPal refund to a person for approval.{" "}
-          <a href={HEADLINE.source.href} target="_blank" rel="noreferrer" data-testid="story-source" className="inline-flex items-center gap-0.5 text-sm text-zinc-400 underline underline-offset-2 hover:text-white">
-            {HEADLINE.source.label}
-            <ArrowUpRight className="size-3" aria-hidden />
-          </a>
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why it matters</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Course promises are hard to check before you pay</h2>
+        <p className="mt-3 max-w-3xl text-zinc-600">
+          Buyers say refunds get denied, stalled or re-ruled after they ask. Pass or Refund makes the promise testable: a public rubric, a graded final check, and two fails send a real PayPal refund to a person for approval.
         </p>
         <ul data-testid="story-pains" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {PAINS.map((pain) => (
-            <li key={pain.title} className="flex flex-col gap-2 rounded-xl bg-white p-4 text-zinc-900">
+            <li key={pain.title} className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4 text-zinc-900">
               <p className="font-semibold">{pain.title}</p>
               <p className="text-sm text-zinc-600">
                 {pain.evidence} <Source {...pain.source} />
@@ -72,9 +82,9 @@ export function Story() {
             </li>
           ))}
         </ul>
-        <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
+        <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
           <span>Buyer accounts are single reviews: they show the pattern recurs, not how often.</span>
-          <a href={`/learn/${SAMPLE_PASS_ID}`} data-testid="sample-pass-link" className="font-medium text-white underline underline-offset-2">
+          <a href={`/learn/${SAMPLE_PASS_ID}`} data-testid="sample-pass-link" className="font-medium text-brand underline underline-offset-2">
             See what passing looks like: a sample learner&rsquo;s certificate
           </a>
         </p>
