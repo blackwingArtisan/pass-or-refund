@@ -110,7 +110,7 @@ export class Guard {
       }
     }
 
-    let approvalReason = p.requireApprovalFor?.includes(tool.name) ? `${tool.name} always requires human approval.` : undefined;
+    let approvalReason = p.requireApprovalFor?.includes(tool.name) ? tool.label ? `${tool.label} needs a person's approval.` : `${tool.name} always needs a person's approval.` : undefined;
     const amount = impact?.amount;
     const inPolicyCurrency = amount ? amount.currency_code === p.currency : false;
     if (amount) {

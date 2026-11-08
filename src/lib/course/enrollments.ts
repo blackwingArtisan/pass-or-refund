@@ -17,7 +17,7 @@ const enrollments = () => collection<Enrollment>("enrollments");
 export const activeRefunds = () => singleton("course:active-refunds", () => new Set<string>());
 export const activeGrading = () => singleton("course:active-grading", () => new Set<string>());
 
-export function createEnrollment(learnerName: string, learnerEmail: string): Enrollment {
+export function createEnrollment(learnerName: string, learnerEmail: string, opts: { testRun?: boolean } = {}): Enrollment {
   return enrollments().upsert({
     id: `en_${randomUUID().slice(0, 8)}`,
     learnerName,
@@ -27,6 +27,7 @@ export function createEnrollment(learnerName: string, learnerEmail: string): Enr
     createdAt: new Date().toISOString(),
     priceCents: COURSE_PRICE_CENTS,
     attempts: [],
+    ...(opts.testRun ? { testRun: true } : {}),
   });
 }
 
@@ -132,14 +133,18 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
     enrollment = saveEnrollment({ ...enrollment, status: "refund_blocked", refund: { ...enrollment.refund!, error: "The approval was lost when the server restarted. Request it again." } });
   }
   // PayPal's email for the buyer is only for matching one refund per payer: it never leaves the server.
+  // So is the email the learner typed: no screen needs it.
+  const { learnerEmail, ...shown } = enrollment;
+  void learnerEmail;
   const payment = enrollment.payment ? { ...enrollment.payment, payerEmail: undefined } : undefined;
-  return { ...enrollment, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
+  return { ...shown, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
 }
 
-export function listEnrollments(): EnrollmentView[] {
+/** Paid enrollments, newest first. Test-suite buyers are left out unless asked for. */
+export function listEnrollments(opts: { includeTestRuns?: boolean } = {}): EnrollmentView[] {
   return enrollments()
     .list()
-    .filter((e) => e.status !== "unpaid")
+    .filter((e) => e.status !== "unpaid" && (opts.includeTestRuns || !e.testRun))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(viewEnrollment);
 }

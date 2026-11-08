@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { testRunState } from "./tests/e2e/test-run";
 
 /**
  * The course flows on the real PayPal sandbox (npm run test:e2e:sandbox). The course is paid for
@@ -19,6 +20,7 @@ export default defineConfig({
   outputDir: "test-results/sandbox",
   use: {
     baseURL: HOSTED ?? `http://localhost:${PORT}`,
+    storageState: testRunState(HOSTED ?? `http://localhost:${PORT}`),
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
   },

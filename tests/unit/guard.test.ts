@@ -147,7 +147,7 @@ describe("human approval", () => {
     approveNext();
     const out = await guard.run(tool, { to: "ada@example.com", amount: "1.00" }, ctx());
     expect(out.status).toBe("executed");
-    expect(out.approval?.reason).toMatch(/always requires/);
+    expect(out.approval?.reason).toMatch(/always needs a person's approval/);
   });
 
   it("refuses to decide an approval twice", async () => {

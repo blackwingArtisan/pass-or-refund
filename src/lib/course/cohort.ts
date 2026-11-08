@@ -5,7 +5,10 @@
  */
 import { formatCents } from "./policy";
 import { course, lessonForItem, lessons, rubric } from "./content";
-import type { Attempt, Enrollment, EnrollmentStatus, Refund } from "./types";
+import type { Attempt, Enrollment as FullEnrollment, EnrollmentStatus, Refund } from "./types";
+
+/** The cohort never needs who a learner is, only what they did. */
+type Enrollment = Omit<FullEnrollment, "learnerEmail">;
 
 /** Getting this share of a question's points clears it: the same 70% the whole check asks for. */
 export const QUESTION_CLEAR_SHARE = course.passMark / 100;
