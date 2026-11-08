@@ -9,8 +9,11 @@ import { singleton } from "../singleton";
 import { getEnv } from "../env";
 import { getPayPal } from "./index";
 import { ingestPayPalResource, ledger } from "./ledger";
-import { isCourseEvent } from "../course/scope";
+import { isCourseEvent, TEAM_CHANNEL } from "../course/scope";
+import { webhookChannels } from "../course/paypal-events";
 import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, type AnyWebhookEvent } from "./webhooks";
+import { noteDelivery } from "./webhook-trail";
+import { enrollmentForEvent } from "../course/paypal-events";
 import "./handlers";
 
 const seen = singleton("paypal:webhook-seen", () => new Map<string, number>());
@@ -24,14 +27,20 @@ function amountOf(event: AnyWebhookEvent) {
 /**
  * Sandbox entries share one PayPal app, and PayPal sends every webhook all of that app's events.
  * True only for an event that names an order, invoice or capture this app has never touched, so
- * one entry's payments stay out of another's ledger. Payouts, disputes and the rest pass through.
+ * one entry's payments stay out of another's ledger. A dispute counts as ours when its capture is.
+ * Payouts and the rest pass through.
  */
 export function isOtherAppsEvent(event: AnyWebhookEvent) {
   const r = event.resource as {
     id?: string;
     links?: { rel: string; href: string }[];
     supplementary_data?: { related_ids?: { order_id?: string } };
+    disputed_transactions?: { seller_transaction_id?: string }[];
   };
+  if (event.event_type.startsWith("CUSTOMER.DISPUTE.")) {
+    const captures = (r.disputed_transactions ?? []).map((t) => t.seller_transaction_id).filter((id): id is string => !!id);
+    return !captures.some((id) => ledger.get("capture", id));
+  }
   const orderId = r.supplementary_data?.related_ids?.order_id ?? (event.event_type.startsWith("CHECKOUT.ORDER.") ? r.id : undefined);
   if (orderId) return !ledger.get("order", orderId);
   if (event.event_type.startsWith("INVOICING.INVOICE.")) {
@@ -42,25 +51,37 @@ export function isOtherAppsEvent(event: AnyWebhookEvent) {
   return !!capturedBy && !ledger.get("capture", capturedBy);
 }
 
+const capturedByOf = (event: AnyWebhookEvent) => (event.resource as { links?: { rel: string; href: string }[] }).links?.find((l) => l.rel === "up" && l.href.includes("/captures/"))?.href.split("/").pop();
+const aboutOf = (event: AnyWebhookEvent) => ({ eventId: event.id, eventType: event.event_type, resourceId: (event.resource as { id?: string }).id, captureId: capturedByOf(event) });
+
 export async function processWebhookEvent(event: AnyWebhookEvent, opts: { replay?: boolean } = {}) {
   // PayPal retries a delivery up to 25 times over 3 days; handle each event id once.
-  if (!opts.replay && seen.has(event.id)) return { duplicate: true, handled: 0, errors: [] as string[] };
+  if (!opts.replay && seen.has(event.id)) {
+    noteDelivery({ ...aboutOf(event), outcome: "duplicate" });
+    return { duplicate: true, handled: 0, errors: [] as string[] };
+  }
   seen.set(event.id, Date.now());
   if (seen.size > 5000) seen.delete(seen.keys().next().value!);
 
   ingestPayPalResource(event.resource);
-  return withContext({ channel: "global", actor: "webhook" }, async () => {
+  // App change: a course webhook goes to the course team and to the one learner it belongs to, never to everyone.
+  return withContext({ channel: TEAM_CHANNEL, actor: "webhook" }, async () => {
     const result = await dispatchWebhook(event);
-    timeline.emit({
-      kind: "webhook",
-      status: result.errors.length ? "failed" : "succeeded",
-      title: event.event_type,
-      subtitle: opts.replay ? `Replayed webhook · ${event.id}` : `Webhook · ${event.id}`,
-      detail: event.summary,
-      amount: amountOf(event),
-      error: result.errors.length ? { name: "WebhookHandlerError", message: result.errors.join("; ") } : undefined,
-      data: { event, handlers: result.handled },
-    });
+    const enrollmentId = enrollmentForEvent(event)?.id;
+    noteDelivery({ ...aboutOf(event), outcome: result.errors.length ? "failed" : "handled", enrollmentId, detail: result.errors.length ? result.errors.join("; ") : enrollmentId ? undefined : "No enrollment has these PayPal ids." });
+    for (const channel of webhookChannels(event)) {
+      timeline.emit({
+        channel,
+        kind: "webhook",
+        status: result.errors.length ? "failed" : "succeeded",
+        title: event.event_type,
+        subtitle: opts.replay ? `Replayed webhook · ${event.id}` : `Webhook · ${event.id}`,
+        detail: event.summary,
+        amount: amountOf(event),
+        error: result.errors.length ? { name: "WebhookHandlerError", message: result.errors.join("; ") } : undefined,
+        data: { event, handlers: result.handled },
+      });
+    }
     return { duplicate: false, ...result };
   });
 }
@@ -69,10 +90,11 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   const raw = await req.text();
   const verification = await getPayPal().webhooks.verify(req.headers, raw);
   if (!verification.verified) {
+    noteDelivery({ outcome: "rejected", detail: `${verification.status}${verification.reason ? `: ${verification.reason}` : ""}` });
     timeline.emit({
       kind: "webhook",
       status: "failed",
-      channel: "global",
+      channel: TEAM_CHANNEL,
       title: "Webhook rejected",
       detail: verification.reason ?? verification.status,
     });
@@ -83,9 +105,14 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   try {
     event = parseWebhookEvent(raw);
   } catch {
+    noteDelivery({ outcome: "invalid" });
     return Response.json({ error: "INVALID_WEBHOOK_PAYLOAD" }, { status: 400 });
   }
-  if (getEnv().paypalMode === "sandbox" && (isOtherAppsEvent(event) || !isCourseEvent(event.event_type))) return Response.json({ received: true, ignored: "other-app" });
+  if (getEnv().paypalMode === "sandbox" && (isOtherAppsEvent(event) || !isCourseEvent(event.event_type))) {
+    // Most of these are other apps' payments on the shared sandbox account; only the course's own refunds are worth a line.
+    if (event.event_type === "PAYMENT.CAPTURE.REFUNDED") noteDelivery({ ...aboutOf(event), outcome: "other-app", detail: "No capture in this app's ledger matches." });
+    return Response.json({ received: true, ignored: "other-app" });
+  }
   const replay = getEnv().paypalMode === "mock" && req.headers.get("x-kit-replay") === "1";
   const result = await processWebhookEvent(event, { replay });
   // Always 2xx once verified, or PayPal keeps retrying; handler errors show on the timeline.

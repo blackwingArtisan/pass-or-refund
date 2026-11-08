@@ -8,11 +8,13 @@ import { useKit } from "./kit-provider";
  * Live timeline for this tab's session (+ "global" events such as webhooks).
  *   const { steps, events, connected } = useTimeline({ includeGlobal: true });
  */
-export function useTimeline(opts: { includeGlobal?: boolean; runId?: string; onEvent?: (e: TimelineEvent) => void } = {}) {
+export function useTimeline(opts: { includeGlobal?: boolean; channels?: string[]; runId?: string; onEvent?: (e: TimelineEvent) => void } = {}) {
   const { sessionId } = useKit();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const { includeGlobal = true, runId } = opts;
+  // App change: extra channels, such as one enrollment's own PayPal webhooks.
+  const extra = (opts.channels ?? []).join(",");
   // Keep the latest callback without re-subscribing (avoids stale closures in onEvent).
   const onEventRef = useRef(opts.onEvent);
   useEffect(() => {
@@ -21,7 +23,7 @@ export function useTimeline(opts: { includeGlobal?: boolean; runId?: string; onE
 
   useEffect(() => {
     if (sessionId === "ssr") return;
-    const channels = [sessionId, ...(includeGlobal ? ["global"] : [])].join(",");
+    const channels = [sessionId, ...(includeGlobal ? ["global"] : []), ...(extra ? extra.split(",") : [])].join(",");
     const params = new URLSearchParams({ channels, ...(runId ? { runId } : {}) });
     const source = new EventSource(`/api/events?${params}`);
     source.addEventListener("open", () => setConnected(true));
@@ -33,7 +35,7 @@ export function useTimeline(opts: { includeGlobal?: boolean; runId?: string; onE
       onEventRef.current?.(event);
     });
     return () => source.close();
-  }, [sessionId, includeGlobal, runId]);
+  }, [sessionId, includeGlobal, extra, runId]);
 
   const steps: TimelineStep[] = useMemo(() => mergeEvents(events), [events]);
   return { events, steps, connected, clear: () => setEvents([]) };

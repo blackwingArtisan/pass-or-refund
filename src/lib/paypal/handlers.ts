@@ -9,5 +9,7 @@
  *   });
  */
 import { onWebhook } from "./webhooks";
+// The course's handlers: capture, refund and dispute webhooks settle each enrollment's record.
+import "../course/paypal-events";
 
 void onWebhook;

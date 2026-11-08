@@ -36,6 +36,13 @@ export function requireEnrollment(id: string): Enrollment {
   return enrollment;
 }
 
+/** The enrollment a PayPal id belongs to: its order, its capture or its refund. */
+export function enrollmentForPayPalId(ids: { orderId?: string; captureId?: string; refundId?: string }): Enrollment | undefined {
+  return enrollments()
+    .list()
+    .find((e) => (ids.orderId && e.payment?.orderId === ids.orderId) || (ids.captureId && e.payment?.captureId === ids.captureId) || (ids.refundId && e.refund?.refundId === ids.refundId));
+}
+
 export function saveEnrollment(enrollment: Enrollment): Enrollment {
   return enrollments().upsert(enrollment);
 }
@@ -87,6 +94,18 @@ export function unpaidFor(learnerEmail: string): Enrollment[] {
     .list()
     .filter((e) => e.status === "unpaid" && e.payment?.orderId && learnerKey(e.learnerEmail, e.courseSlug) === key)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * A payment PayPal took that we rebuilt from PayPal (a webhook or a reload did it), which the
+ * learner hasn't started on. Buying again takes them back to it rather than charging twice.
+ */
+export function recoveredUnstartedFor(learnerEmail: string): Enrollment | undefined {
+  const key = learnerKey(learnerEmail, course.slug);
+  return enrollments()
+    .list()
+    .filter((e) => e.status === "active" && e.payment?.recovered && e.attempts.length === 0 && learnerKey(e.learnerEmail, e.courseSlug) === key)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 }
 
 /** A blocked or declined refund moved no money, so it doesn't use up the learner's one refund. */

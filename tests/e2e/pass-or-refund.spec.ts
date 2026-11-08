@@ -3,7 +3,7 @@
  * sandbox (npm run test:e2e:sandbox), where PayPal's objects are read back directly.
  * `E2E_AI_MODE=live npx playwright test -c playwright.sandbox.config.ts -g "real AI"` is the paid run.
  */
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
@@ -17,6 +17,29 @@ const LIVE_AI = process.env.E2E_AI_MODE === "live";
 const SPONSOR_UI = process.env.NEXT_PUBLIC_SPONSOR_UI === "1";
 
 const mode = async (request: APIRequestContext) => (await (await request.get("/api/kit/status")).json()).paypal.mode as "mock" | "sandbox";
+
+/** PayPal's webhooks reach the mock and the hosted site. A local sandbox server has no public address, so none arrive. */
+const webhooksArrive = async (request: APIRequestContext) => (await mode(request)) === "mock" || !!process.env.E2E_BASE_URL;
+
+/**
+ * PayPal sends the refund webhook within seconds most times, but a sandbox delivery can lag. Waits
+ * up to 3 minutes; if it never shows, prints what the server did with each refund webhook it got,
+ * so a failure says whether PayPal never delivered, the signature check refused it, or the app
+ * didn't tie it to the learner.
+ */
+async function refundWebhookShows(team: Locator, request: APIRequestContext, id: string) {
+  const started = Date.now();
+  try {
+    await expect(team.getByTestId("team-webhook")).toContainText(/PayPal's webhook confirmed the refund at \d{1,2}:\d{2}\s[AP]M/, { timeout: 180_000 });
+    console.log(`Refund webhook for ${id} showed after ${Math.round((Date.now() - started) / 1000)} s`);
+  } catch (e) {
+    const { payment, refund } = await enrollmentOf(request, id);
+    const { deliveries } = (await (await request.get("/api/paypal/webhook-trail")).json()) as { deliveries: { resourceId?: string; captureId?: string; eventType?: string }[] };
+    const ours = deliveries.filter((d) => [payment?.captureId, refund?.refundId].includes(d.resourceId) || d.captureId === payment?.captureId);
+    console.log("Webhook trail for", id, JSON.stringify({ captureId: payment?.captureId, refundId: refund?.refundId, ours, rejectedOrOther: deliveries.filter((d) => !d.eventType || d.eventType === "PAYMENT.CAPTURE.REFUNDED").slice(0, 10) }));
+    throw e;
+  }
+}
 
 /** A new address each time: the hosted suite keeps its data between runs, and a learner only gets one refund. */
 const newEmail = (name: string) => `${name.toLowerCase().replace(/\W+/g, ".")}.${Date.now()}@example.com`;
@@ -97,7 +120,9 @@ async function failTwice(page: Page) {
 async function approveOnTeam(page: Page, id: string) {
   await page.getByTestId("refund-waiting").getByRole("link").click();
   const team = page.getByTestId(`enrollment-${id}`);
-  await expect(team.getByTestId("approval-reasons")).toContainText("first refund", { timeout: 60_000 });
+  await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+  // The mock agent's words. A real agent words its reasons its own way.
+  if (!LIVE_AI) await expect(team.getByTestId("approval-reasons")).toContainText("first refund");
   await team.getByTestId("approve-button").click();
   await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
   return team;
@@ -117,7 +142,9 @@ function watchCode(page: Page) {
 }
 
 test.describe("mock-safe flows", () => {
-  test.skip(LIVE_AI, "These flows use mock AI. The paid run is the real AI test.");
+  // On real AI (the hosted suite), only flows tagged @live run: those that make no AI call, and a
+  // few that read their scores from the page instead of the mock's fixed ones. About 20 AI calls in all.
+  test.beforeEach(({}, testInfo) => test.skip(LIVE_AI && !testInfo.tags.includes("@live"), "Needs the mock's fixed scores, or more AI calls than the hosted limit allows."));
 
   test("cohort results: real attempts show what to fix", async ({ page, request }) => {
     const before = await cohortOf(request);
@@ -178,7 +205,7 @@ test.describe("mock-safe flows", () => {
     await page.screenshot({ path: "screenshots/cohort-results.png" });
   });
 
-  test("sample learners are labelled, and stay out of the course team's list", async ({ page, request }) => {
+  test("sample learners are labelled, and stay out of the course team's list", { tag: "@live" }, async ({ page, request }) => {
     if ((await mode(request)) === "mock") expect((await request.post("/api/dev/seed")).ok()).toBe(true);
     await page.goto("/cohort");
     await expect(page.getByTestId("sample-cohort-label")).toContainText("Sample cohort: 36 made-up learners");
@@ -188,7 +215,8 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByText("Sample learner")).toHaveCount(0);
   });
 
-  test("fail twice, a person approves, PayPal refunds", async ({ page, request }) => {
+  test("fail twice, a person approves, PayPal refunds", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000); // real grading, and up to 3 minutes for PayPal's refund webhook
     const id = await buy(page, request, "Alex Rivera");
     const { payment } = await enrollmentOf(request, id);
     expect(payment).toMatchObject({ captureStatus: "COMPLETED", capturedCents: COURSE_PRICE_CENTS });
@@ -213,8 +241,11 @@ test.describe("mock-safe flows", () => {
     if (sandbox) expect((await readPayPalObjects(payment!.orderId, payment!.captureId!)).capture.status).toBe("COMPLETED");
 
     const team = await approveOnTeam(page, id);
+    const hooks = await webhooksArrive(request);
+    if (hooks) await refundWebhookShows(team, request, id);
     await team.getByTestId("learner-link").click();
     await expect(page.getByTestId("refund-issued")).toContainText("Refund issued, sorry we let you down", { timeout: 60_000 });
+    if (hooks) await expect(page.getByTestId("refund-webhook")).toContainText(/PayPal.s webhook confirmed it at \d{1,2}:\d{2}\s[AP]M/, { timeout: 60_000 });
     const sandboxRefund = (await enrollmentOf(request, id)).refund;
     await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED", { timeout: 30_000 });
     await expect(page.getByTestId("capture-status")).toHaveText(sandboxRefund!.captureStatus!);
@@ -238,7 +269,7 @@ test.describe("mock-safe flows", () => {
   });
 
   // Not working yet: after paying, PayPal's guest page variant leaves the window open.
-  test.fixme("the buy button opens PayPal's own window, and the test card pays there", async ({ page, request }) => {
+  test.fixme("the buy button opens PayPal's own window, and the test card pays there", { tag: "@live" }, async ({ page, request }) => {
     test.skip((await mode(request)) !== "sandbox", "PayPal's window only exists on the sandbox.");
     await page.goto("/course");
     await page.getByTestId("learner-name").filter({ visible: true }).fill("Pat Window");
@@ -254,14 +285,17 @@ test.describe("mock-safe flows", () => {
     expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
   });
 
-  test("a person declines: no money moves and the learner reads why", async ({ page, request }) => {
+  test("a person declines: no money moves and the learner reads why", { tag: "@live" }, async ({ page, request }) => {
     const id = await buy(page, request, "Dana Decline");
     await failTwice(page);
     const { payment } = await enrollmentOf(request, id);
 
+    const { attempts } = await enrollmentOf(request, id);
     await page.getByTestId("refund-waiting").getByRole("link").click();
     const team = page.getByTestId(`enrollment-${id}`);
-    await expect(team.getByTestId("approval-reasons")).toContainText("34 and 52", { timeout: 60_000 });
+    // The agent's reasons name both scores, whatever the grader gave.
+    await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+    for (const a of attempts) await expect(team.getByTestId("approval-reasons")).toContainText(String(a.score));
     await team.getByTestId("decline-button").click();
     await expect(team.getByTestId("decline-button")).toBeDisabled();
     await team.getByTestId("decline-note").fill("The two attempts look copied from another learner");
@@ -315,7 +349,7 @@ test.describe("mock-safe flows", () => {
     }
   });
 
-  test("trying to trick the grader gets flagged and voids the guarantee", async ({ page, request }) => {
+  test("trying to trick the grader gets flagged and voids the guarantee", { tag: "@live" }, async ({ page, request }) => {
     const id = await buy(page, request, "Jo Tricks");
     const score = await attempt(page, "inject", 1);
     expect(score).toBeLessThan(66);
@@ -324,11 +358,18 @@ test.describe("mock-safe flows", () => {
     expect((await enrollmentOf(request, id)).guaranteeVoid).toBe(true);
   });
 
-  test("a borderline attempt waits for a person, who goes through it item by item and passes it", async ({ page, request }) => {
+  test("a borderline attempt waits for a person, who goes through it item by item and passes it", { tag: "@live" }, async ({ page, request }) => {
     const id = await buy(page, request, "Dee Close");
-    expect(await attempt(page, "borderline", 1)).toBe(69);
-    await expect(page.getByTestId("under-review")).toContainText("Under review, answer within one business day");
+    const score = await attempt(page, "borderline", 1);
     const { status, refund, attempts } = await enrollmentOf(request, id);
+    if (LIVE_AI && status !== "under_review") {
+      // Real grading can land these answers outside 69-70. The learner still gets the result the rules give.
+      expect(status).toBe(attempts[0].outcome === "pass" ? "passed" : "active");
+      test.info().annotations.push({ type: "real AI", description: `Borderline answers scored ${score} (${attempts[0].runs.map((r) => r.total).join(", ")}), so no person was needed` });
+      return;
+    }
+    if (!LIVE_AI) expect(score).toBe(69);
+    await expect(page.getByTestId("under-review")).toContainText("Under review, answer within one business day");
     expect(status).toBe("under_review");
     expect(refund).toBeUndefined();
     expect(attempts[0].runs).toHaveLength(3);
@@ -336,7 +377,7 @@ test.describe("mock-safe flows", () => {
     await page.goto("/team");
     const card = page.getByTestId(`enrollment-${id}`);
     const settle = card.getByTestId("settle-review");
-    await expect(settle).toContainText("landed on 69");
+    await expect(settle).toContainText(`landed on ${score}`);
     await expect(settle).toContainText(attempts[0].runs.map((r) => r.total).join(", "));
     await expect(settle.getByTestId("settle-pass")).toBeDisabled();
     await expect(settle.getByTestId("settle-fail")).toBeDisabled();
@@ -353,8 +394,8 @@ test.describe("mock-safe flows", () => {
     await card.getByTestId("learner-link").click();
     await expect(page.getByTestId("certificate")).toContainText("Dee Close");
     await expect(page.getByTestId("settled-note")).toContainText("All four answers show the idea");
-    await expect(page.getByTestId("score-1")).toContainText("69");
-    expect(await enrollmentOf(request, id)).toMatchObject({ status: "passed", attempts: [{ score: 69, outcome: "pass", settled: { outcome: "pass" } }] });
+    await expect(page.getByTestId("score-1")).toContainText(String(score));
+    expect(await enrollmentOf(request, id)).toMatchObject({ status: "passed", attempts: [{ score, outcome: "pass", settled: { outcome: "pass" } }] });
   });
 
   test("a borderline second attempt waits for a person, with no refund agent", async ({ page, request }) => {
@@ -463,7 +504,7 @@ test.describe("mock-safe flows", () => {
     return { id: enrollmentId as string, orderId: orderId as string };
   }
 
-  test("the app stops after PayPal takes the money: buying again finds the payment, with no second charge", async ({ page, request }) => {
+  test("the app stops after PayPal takes the money: buying again finds the payment, with no second charge", { tag: "@live" }, async ({ page, request }) => {
     const email = newEmail("Ana Stuck");
     const { id, orderId } = await paidBehindTheApp(request, "Ana Stuck", email);
 
@@ -485,14 +526,14 @@ test.describe("mock-safe flows", () => {
     }
   });
 
-  test("the app stops after PayPal takes the money: opening the course page is enough", async ({ page, request }) => {
+  test("the app stops after PayPal takes the money: opening the course page is enough", { tag: "@live" }, async ({ page, request }) => {
     const { id } = await paidBehindTheApp(request, "Bo Reloads", newEmail("Bo Reloads"));
     await page.goto(`/learn/${id}`);
     await expect(page.getByTestId("payment-recovered")).toBeVisible();
     await expect(page.getByTestId("submit-attempt")).toBeVisible();
   });
 
-  test("a checkout nobody paid for says so", async ({ page, request }) => {
+  test("a checkout nobody paid for says so", { tag: "@live" }, async ({ page, request }) => {
     const { enrollmentId } = await (await request.post("/api/enrollments", { data: { learnerName: "Una Paid", learnerEmail: newEmail("Una Paid") } })).json();
     await page.goto(`/learn/${enrollmentId}`);
     await expect(page.getByTestId("purchase-unfinished")).toContainText("PayPal hasn\u2019t taken any money");
@@ -510,10 +551,17 @@ test.describe("mock-safe flows", () => {
     if ((await mode(request)) === "sandbox") await refundBehindTheApp(payment!.captureId!);
     else expect((await request.post(`/api/dev/mock/behind-the-app/${id}`, { data: { step: "refund" } })).ok()).toBe(true);
 
-    await team.getByTestId("approve-button").click();
-    await expect(team.getByTestId("retry-refund")).toBeVisible({ timeout: 60_000 });
-    await team.getByTestId("retry-refund").click();
-    await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+    if (await webhooksArrive(request)) {
+      // PayPal's REFUNDED webhook records the refund, and the approval waiting for it closes: nothing is left to pay.
+      await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await expect(team.getByTestId("approve-button")).toHaveCount(0);
+      await expect(team.getByTestId("team-webhook")).toContainText("PayPal's webhook confirmed the refund");
+    } else {
+      await team.getByTestId("approve-button").click();
+      await expect(team.getByTestId("retry-refund")).toBeVisible({ timeout: 60_000 });
+      await team.getByTestId("retry-refund").click();
+      await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+    }
     const { refund, status } = await enrollmentOf(request, id);
     expect(status).toBe("refunded");
     expect(refund?.refundId).toBeTruthy();
@@ -525,7 +573,76 @@ test.describe("mock-safe flows", () => {
     }
   });
 
-  test("a busy grader shows a live countdown that clears itself, and the answers stay", async ({ page, request }) => {
+  test("a PENDING refund settles when PayPal's webhook says so, with no reload", async ({ page, request }) => {
+    test.skip((await mode(request)) !== "mock", "Only the mock can hold a refund PENDING on purpose.");
+    expect((await request.post("/api/dev/mock/refund-hold", { data: { action: "hold" } })).ok()).toBe(true);
+    try {
+      const id = await buy(page, request, "Pia Pending");
+      await failTwice(page);
+      const team = await approveOnTeam(page, id);
+      await team.getByTestId("learner-link").click();
+      await expect(page.getByTestId("refund-status")).toHaveText("PENDING", { timeout: 30_000 });
+      await expect(page.getByTestId("refund-pending-note")).toContainText("ECHECK");
+      await expect(page.getByTestId("refund-webhook")).toHaveCount(0);
+
+      expect((await request.post("/api/dev/mock/refund-hold", { data: { action: "release" } })).ok()).toBe(true);
+      // Well inside the 30 s the server waits before asking PayPal again on its own: this is the webhook.
+      await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED", { timeout: 10_000 });
+      await expect(page.getByTestId("capture-status")).toHaveText("REFUNDED");
+      await expect(page.getByTestId("refund-webhook")).toContainText("PayPal\u2019s webhook confirmed it at");
+      await expect(page.getByTestId("refund-pending-note")).toHaveCount(0);
+    } finally {
+      await request.post("/api/dev/mock/refund-hold", { data: { action: "off" } });
+    }
+  });
+
+  test("a learner's PayPal dispute: the agent proposes accepting it once a refund is due, and a person approves", async ({ page, request }) => {
+    test.skip((await mode(request)) !== "mock", "PayPal's sandbox only opens a dispute from the buyer's own account.");
+    const id = await buy(page, request, "Dee Spute");
+    await attempt(page, "fail1", 1);
+    expect((await request.post(`/api/dev/mock/dispute/${id}`)).ok()).toBe(true);
+    await expect(page.getByTestId("learner-dispute")).toContainText("You opened a PayPal dispute on this payment");
+    await expect(page.getByTestId("tool-call-timeline").getByText("CUSTOMER.DISPUTE.CREATED")).toBeVisible();
+    await page.goto("/team");
+    await expect(page.getByTestId(`enrollment-${id}`).getByTestId("team-dispute")).toContainText("doesn't cover this yet");
+    await expect(page.getByTestId(`enrollment-${id}`).getByTestId("approve-button")).toHaveCount(0);
+
+    await page.goto(`/learn/${id}`);
+    await studyThenRetry(page);
+    await attempt(page, "fail2", 2);
+    await expect(page.getByTestId("refund-waiting")).toBeVisible();
+    await page.getByTestId("refund-waiting").getByRole("link").click();
+    const team = page.getByTestId(`enrollment-${id}`);
+    await expect(team.getByTestId("approval-reasons")).toContainText("PayPal dispute", { timeout: 60_000 });
+    await expect(team).toContainText("Accept Dee Spute's PayPal dispute and refund $49.00");
+    await team.getByTestId("approve-button").click();
+    await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(team).toContainText("paid by accepting the dispute");
+    await expect(team.getByTestId("team-dispute")).toContainText("PayPal closed the dispute in the learner's favour");
+    await team.getByTestId("learner-link").click();
+    await expect(page.getByTestId("refund-via-dispute")).toBeVisible();
+    await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED", { timeout: 30_000 });
+    await expect(page.getByTestId("capture-status")).toHaveText("REFUNDED");
+    await expect(page.getByTestId("refund-webhook")).toBeVisible();
+  });
+
+  test("a learner's timeline shows only their own PayPal events", { tag: "@live" }, async ({ page, request, browser, baseURL }) => {
+    await buy(page, request, "Ivy First");
+    const other = await browser.newContext({ baseURL });
+    const second = await other.newPage();
+    try {
+      await buy(second, request, "Oli Second");
+      const captured = second.getByTestId("tool-call-timeline").locator('[data-kind="webhook"]').filter({ hasText: "PAYMENT.CAPTURE.COMPLETED" });
+      if (await webhooksArrive(request)) await expect(captured).toHaveCount(1, { timeout: 60_000 });
+      // Give anyone else's webhook time to show up, if it could.
+      await second.waitForTimeout(3_000);
+      expect(await captured.count()).toBeLessThanOrEqual(1);
+    } finally {
+      await other.close();
+    }
+  });
+
+  test("a busy grader shows a live countdown that clears itself, and the answers stay", { tag: "@live" }, async ({ page, request }) => {
     await buy(page, request, "Busy Grader");
     await expect(page.getByTestId("submit-attempt")).toBeDisabled(); // nothing written yet
     await page.route("**/attempts", (route) =>
@@ -550,7 +667,7 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("answer-q1")).toHaveValue(typed);
   });
 
-  test("other errors stay until dismissed, in plain words", async ({ page, request }) => {
+  test("other errors stay until dismissed, in plain words", { tag: "@live" }, async ({ page, request }) => {
     await buy(page, request, "Plain Words");
     await page.route("**/attempts", (route) => (route.request().method() === "POST" ? route.fulfill({ status: 500, json: {} }) : route.continue()));
     await page.getByTestId("sample-fail1").click();
@@ -564,7 +681,7 @@ test.describe("mock-safe flows", () => {
     await expect(toast).toBeHidden();
   });
 
-  test("/team states its access rule", async ({ page }) => {
+  test("/team states its access rule", { tag: "@live" }, async ({ page }) => {
     await page.goto("/team");
     await expect(page.getByTestId("team-access-rule")).toContainText("open to anyone on purpose");
     await expect(page.getByTestId("team-access-rule")).toContainText("no real money can move");
