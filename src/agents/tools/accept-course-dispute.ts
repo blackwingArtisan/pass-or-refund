@@ -38,6 +38,7 @@ async function checked(enrollmentId: string, paypal: PayPalApi) {
 export const acceptCourseDispute = (enrollmentId: string) =>
   defineTool({
     name: ACCEPT_DISPUTE_CLAIM,
+    label: "Accepting a PayPal dispute",
     description: "The learner opened a PayPal dispute. Propose accepting it, which refunds them in full through PayPal. It pauses for a person to approve, and no money moves until they do. Give your reasons: they are shown to the person deciding.",
     risk: "money",
     schema: z.object({
