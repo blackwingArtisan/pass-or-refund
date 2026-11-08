@@ -51,6 +51,36 @@ export interface ReviewDecision {
   checkedItems: string[];
 }
 
+/** The rubric a purchase is graded against, fixed the moment the learner bought. */
+export interface RubricLock {
+  version: string;
+  /** The first 12 hex characters of the rubric's SHA-256. Any edit to the rubric changes it. */
+  fingerprint: string;
+  lockedAt: string;
+}
+
+/** A learner's one challenge to a rubric line, made before their retake. */
+export interface Contest {
+  attempt: number;
+  itemId: string;
+  /** Why the learner thinks the line was marked wrong. */
+  note: string;
+  at: string;
+  /** Taking the retake first withdraws a contest nobody has ruled on yet. */
+  withdrawnAt?: string;
+  ruling?: ContestRuling;
+}
+
+export interface ContestRuling {
+  /** Upheld: the line counts as met, and code rescores the attempt. */
+  upheld: boolean;
+  note: string;
+  by: string;
+  at: string;
+  scoreBefore: number;
+  scoreAfter: number;
+}
+
 export interface Payment {
   orderId: string;
   orderStatus?: string;
@@ -137,6 +167,9 @@ export interface Enrollment {
   dispute?: CourseDispute;
   /** Bought by a browser test suite. Kept off the course team's list unless the viewer is a test run too. */
   testRun?: boolean;
+  /** Missing only on enrollments made before rubrics were locked: those use version 1. */
+  rubric?: RubricLock;
+  contest?: Contest;
 }
 
 export interface PendingApproval {

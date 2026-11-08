@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Check, RotateCcw, ShieldAlert, Users, X } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
+import { ContestRuling } from "@/components/course/contest-ruling";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -158,6 +159,7 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
           </span>
         </div>
         {enrollment.guaranteeVoid ? <p className="text-sm text-red-700">An attempt was flagged for instructing the grader. The guarantee is void.</p> : null}
+        <ContestRuling enrollment={enrollment} onRuled={onChange} />
         {enrollment.status === "under_review" && latest ? <SettleReview enrollmentId={enrollment.id} attempt={latest} onSettled={onChange} /> : null}
         {enrollment.refund?.proposedWithoutAi && enrollment.status === "refund_pending" ? (
           <p data-testid="proposed-without-ai" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">

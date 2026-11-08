@@ -3,10 +3,10 @@ import { getAuditLog } from "@/lib/agent/audit";
 import { isOutOfAiCredit, RateLimitedError } from "@/lib/ai/errors";
 import { gradeAttempt, type GradeOnce } from "@/lib/grading/grade";
 import { HttpError } from "@/lib/http";
-import { rubric } from "./content";
 import { activeGrading, guaranteeFor, requireEnrollment, saveEnrollment } from "./enrollments";
 import { missedItems, nearCopyOf, nextAttemptOpensAt, shortfallItems } from "./policy";
 import { requestRefund } from "./refund";
+import { lockedRubric } from "./rubric-lock";
 import type { Attempt, Enrollment, EnrollmentStatus, ReviewDecision } from "./types";
 
 const OUT_OF_CREDIT = "We've run out of AI grading credit for now, so this attempt wasn't graded. Your answers are still here and nothing was counted against you. Please try again later.";
@@ -63,6 +63,7 @@ export async function submitAttempt(id: string, input: Record<string, string>, c
   if (activeGrading().has(id)) throw new HttpError(409, "This attempt is already being graded.", "conflict");
   const opensAt = nextAttemptOpensAt(before.attempts, before.gapSkippedAfter);
   if (opensAt) throw new HttpError(409, `Your next attempt opens at ${opensAt}.`, "attempt_gap");
+  const rubric = lockedRubric(before);
   const answers = Object.fromEntries(rubric.questions.map((q) => [q.id, (input[q.id] ?? "").trim()]));
   if (Object.values(answers).every((a) => a === "")) throw new HttpError(422, "Answer at least one question first.", "rule");
 
@@ -71,12 +72,15 @@ export async function submitAttempt(id: string, input: Record<string, string>, c
     const number = before.attempts.length + 1;
     const previous = before.attempts.at(-1);
     const reviewedStudyList = !previous || before.reviewedAttempt === previous.number || missedItems(previous).length === 0;
-    const graded = await gradeAttempt(answers, `attempt ${number}`, grade).catch((error) => {
+    const graded = await gradeAttempt(answers, `attempt ${number}`, grade, rubric).catch((error) => {
       throw gradingProblem(error);
     });
     const attempt: Attempt = { ...graded, number, submittedAt: new Date().toISOString(), answers, reviewedStudyList, nearCopyOf: nearCopyOf(answers, before.attempts) };
     const attempts = [...before.attempts, attempt];
-    const saved = saveEnrollment({ ...requireEnrollment(id), attempts, status: statusAfter(attempt), studyTicks: [] });
+    const now = requireEnrollment(id);
+    // Taking the retake withdraws a contest nobody has ruled on yet.
+    const contest = now.contest && !now.contest.ruling && !now.contest.withdrawnAt ? { ...now.contest, withdrawnAt: attempt.submittedAt } : now.contest;
+    const saved = saveEnrollment({ ...now, attempts, status: statusAfter(attempt), studyTicks: [], contest });
     return attempt.outcome === "fail" && guaranteeFor(saved).due ? requestRefund(saved, channel).enrollment : saved;
   } finally {
     activeGrading().delete(id);

@@ -421,11 +421,21 @@ test.describe("mock-safe flows", () => {
   });
 
   test("a passing attempt gets a certificate and no refund", async ({ page, request }) => {
+    // The rubric's fingerprint before buying, on the receipt, and on the certificate are one and the same.
+    await page.goto("/course");
+    const onSale = (await page.getByTestId("rubric-fingerprint").first().innerText()).replace(/\s/g, "");
+    expect(onSale).toMatch(/^[0-9a-f]{12}$/);
     const id = await buy(page, request, "Sam Okafor");
+    await expect(page.getByTestId("receipt").getByTestId("rubric-fingerprint")).toHaveText(onSale.match(/.{4}/g)!.join(" "));
+    await expect(page.getByTestId("receipt")).toContainText("locked when you bought");
     const score = await attempt(page, "pass", 1);
     expect(score).toBeGreaterThan(73);
     await expect(page.getByTestId("certificate")).toContainText("Sam Okafor");
-    const { payment, refund, status } = await enrollmentOf(request, id);
+    await expect(page.getByTestId("certificate").getByTestId("rubric-fingerprint")).toHaveText(onSale.match(/.{4}/g)!.join(" "));
+    await expect(page.getByTestId("certificate").getByTestId("rubric-version")).toHaveText("v1");
+    await page.getByTestId("certificate").screenshot({ path: "screenshots/certificate-rubric.png" });
+    const { payment, refund, status, rubric: lock } = await enrollmentOf(request, id);
+    expect(lock).toMatchObject({ version: "1", fingerprint: onSale });
     expect(status).toBe("passed");
     expect(refund).toBeUndefined();
     if ((await mode(request)) === "sandbox") {
@@ -433,6 +443,46 @@ test.describe("mock-safe flows", () => {
       console.log("PayPal re-read:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value] }));
       expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { value: PRICE } });
     }
+  });
+
+  test("a learner contests one rubric line, a person upholds it, and the score is added up again", async ({ page, request }) => {
+    await page.goto("/");
+    const stats = page.getByTestId("landing-cohort");
+    await expect(stats.getByTestId("cohort-pass-rate")).toHaveText(/^\d+%$/);
+    await expect(stats.getByTestId("cohort-refund-rate")).toHaveText(/^\d+%$/);
+    await expect(stats).toContainText("made-up sample learners");
+
+    const id = await buy(page, request, "Cleo Contest");
+    const first = await attempt(page, "fail1", 1);
+    const contest = page.getByTestId("contest-line");
+    await contest.locator("summary").click();
+    // Pick a line from a question no cap held down, so upholding it has to raise the score.
+    const graded = (await enrollmentOf(request, id)).attempts[0];
+    const run = graded.runs[graded.shownRun];
+    const capped = new Set(run.caps.filter((c) => c.triggered).map((c) => c.id.split("-")[0]));
+    const line = run.items.find((item) => item.verdict !== "met" && !capped.has(item.id.replace(/[a-z]$/, "")))!.id;
+    await contest.getByTestId("contest-item").selectOption(line);
+    await contest.getByTestId("contest-note").fill("My answer says the edge is worn, so it needs the stone.");
+    await contest.getByTestId("contest-send").click();
+    await expect(page.getByTestId("contest-status")).toContainText("With the course team");
+    await expect(page.getByTestId("contest-line")).toHaveCount(0);
+
+    await page.goto("/team");
+    const card = page.getByTestId(`enrollment-${id}`);
+    await expect(card.getByTestId("team-contest")).toContainText("My answer says the edge is worn");
+    await card.getByTestId("contest-ruling-note").fill("Agreed: your answer says it plainly.");
+    await card.getByTestId("contest-uphold").click();
+    await expect(card.getByTestId("team-contest-done")).toContainText("upheld");
+
+    const after = await enrollmentOf(request, id);
+    expect(after.contest?.ruling).toMatchObject({ upheld: true, scoreBefore: first });
+    expect(after.contest!.ruling!.scoreAfter).toBeGreaterThan(first);
+    expect(after.attempts[0].score).toBe(after.contest!.ruling!.scoreAfter);
+    await page.goto(`/learn/${id}`);
+    await expect(page.getByTestId("contest-ruling")).toContainText(`from ${first} to ${after.contest!.ruling!.scoreAfter}`);
+    await expect(page.getByTestId("contest-ruling")).toContainText("Agreed: your answer says it plainly.");
+    await expect(page.getByTestId("score-1")).toContainText(String(after.contest!.ruling!.scoreAfter));
+    await page.getByTestId("contest-status").screenshot({ path: "screenshots/contest-upheld.png" });
   });
 
   test("trying to trick the grader gets flagged and voids the guarantee", { tag: "@live" }, async ({ page, request }) => {
