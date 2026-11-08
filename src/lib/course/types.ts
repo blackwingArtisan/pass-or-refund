@@ -60,6 +60,8 @@ export interface Payment {
   paidAt?: string;
   /** PayPal's id for the buyer's account. Guest card payments don't have one. */
   payerId?: string;
+  /** The email PayPal has for the buyer, wallet or guest. The server-side test card has none. */
+  payerEmail?: string;
   /** PayPal had the money before our record did, and the record was rebuilt from PayPal. */
   recovered?: boolean;
 }

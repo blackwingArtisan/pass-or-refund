@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rubric } from "@/lib/course/content";
-import { checkGuarantee, completedFails, countsTowardRefund, formatCents, guaranteeVoid, learnerKey, refundAmountProblem } from "@/lib/course/policy";
+import { checkGuarantee, completedFails, countsTowardRefund, formatCents, guaranteeVoid, learnerKey, refundAmountProblem, sameLearner } from "@/lib/course/policy";
 
 const answered = Object.fromEntries(rubric.questions.map((q) => [q.id, "An answer."]));
 const fail = { number: 1, outcome: "fail", score: 40, answers: answered, flagged: false, reviewedStudyList: true };
@@ -37,6 +37,17 @@ describe("refund policy", () => {
     expect(checkGuarantee([fail, second], true).checks.find((c) => c.rule === "one_refund_per_learner")?.passed).toBe(false);
     expect(learnerKey(" Alex+courses@Example.com", "knives")).toBe(learnerKey("alex@example.com ", "knives"));
     expect(learnerKey("alex@example.com", "knives")).not.toBe(learnerKey("alex@example.com", "bread"));
+  });
+
+  it("matches the PayPal payer as well as the email, so a new email on the same payer is the same learner", () => {
+    const buyer = (learnerEmail: string, payment?: { payerId?: string; payerEmail?: string }) => ({ learnerEmail, courseSlug: "knives", payment });
+    expect(sameLearner(buyer("a@example.com"), buyer("A+x@Example.com"))).toBe(true);
+    expect(sameLearner(buyer("a@example.com", { payerId: "P1" }), buyer("b@example.com", { payerId: "P1" }))).toBe(true);
+    // Guest card in PayPal's window: no account id, but PayPal has the buyer's email.
+    expect(sameLearner(buyer("a@example.com", { payerEmail: "Pat@Example.com" }), buyer("b@example.com", { payerEmail: "pat@example.com" }))).toBe(true);
+    expect(sameLearner(buyer("a@example.com", { payerId: "P1", payerEmail: "x@example.com" }), buyer("b@example.com", { payerId: "P2", payerEmail: "y@example.com" }))).toBe(false);
+    expect(sameLearner(buyer("a@example.com", {}), buyer("b@example.com", {}))).toBe(false);
+    expect(sameLearner(buyer("a@example.com", { payerId: "P1" }), { ...buyer("b@example.com", { payerId: "P1" }), courseSlug: "bread" })).toBe(false);
   });
 
   it("counts a later attempt only after the study list was reviewed", () => {

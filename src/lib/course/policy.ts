@@ -17,7 +17,7 @@ export const GUARANTEE_TERMS = [
   "Mark your study list as reviewed before you try again, or that attempt won't count.",
   "An attempt that nearly copies an earlier one counts as incomplete.",
   `Attempts are ${ATTEMPT_GAP_HOURS} hours apart, so you have time to study.`,
-  "One refund per learner per course, and a refund ends your access to the lessons.",
+  "One refund per PayPal account and per email for each course, and a refund ends your access to the lessons.",
   "Trying to trick the grader voids the guarantee.",
   "A person on the course team approves every refund before any money moves.",
 ];
@@ -101,14 +101,21 @@ export function learnerKey(email: string, courseSlug: string): string {
 interface LearnerFacts {
   learnerEmail: string;
   courseSlug: string;
-  payment?: { payerId?: string };
+  payment?: { payerId?: string; payerEmail?: string };
 }
 
-/** The same person on the same course: the same email, or the same PayPal account under a new email. */
+const sameValue = (a?: string, b?: string) => Boolean(a) && a === b;
+const emailKey = (email?: string) => (email ? learnerKey(email, "") : undefined);
+
+/**
+ * The same person on the same course: the same email typed at checkout, or the same PayPal payer
+ * under a new email. The payer is PayPal's account id or the email PayPal has for the buyer (a guest
+ * card checkout in PayPal's window has an email but may have no account id).
+ */
 export function sameLearner(a: LearnerFacts, b: LearnerFacts): boolean {
   if (a.courseSlug !== b.courseSlug) return false;
   if (learnerKey(a.learnerEmail, a.courseSlug) === learnerKey(b.learnerEmail, b.courseSlug)) return true;
-  return Boolean(a.payment?.payerId) && a.payment?.payerId === b.payment?.payerId;
+  return sameValue(a.payment?.payerId, b.payment?.payerId) || sameValue(emailKey(a.payment?.payerEmail), emailKey(b.payment?.payerEmail));
 }
 
 /** The whole rule. `priorRefund` is another purchase by this learner, paid back or on its way. */
@@ -117,7 +124,7 @@ export function checkGuarantee(attempts: AttemptFacts[], priorRefund: boolean): 
   const checks: RuleCheck[] = [
     { rule: "two_completed_fails", passed: fails >= FAILS_FOR_REFUND, detail: `${fails} of ${FAILS_FOR_REFUND} completed failing attempts. An attempt counts when every question is answered, it scored at least ${MIN_POINTS_FOR_REFUND}, it isn't a near-copy of an earlier attempt, and the study list from the attempt before was reviewed.` },
     { rule: "no_injection", passed: !guaranteeVoid(attempts), detail: guaranteeVoid(attempts) ? "An attempt tried to instruct the grader, which voids the guarantee." : "No attempt tried to instruct the grader." },
-    { rule: "one_refund_per_learner", passed: !priorRefund, detail: priorRefund ? "This learner has already had a refund for this course." : "This is the learner's first refund for this course." },
+    { rule: "one_refund_per_learner", passed: !priorRefund, detail: priorRefund ? "This learner, by email or PayPal payer, has already had a refund for this course." : "This is the learner's first refund for this course." },
   ];
   return { due: checks.every((c) => c.passed), checks };
 }

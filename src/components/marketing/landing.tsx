@@ -64,7 +64,7 @@ export function StopsGaming() {
     { title: "The study list comes first", body: "What a learner missed becomes a study list. They tick it off item by item before the second attempt counts." },
     { title: "No copying the first attempt", body: `An attempt that shares ${c.nearCopyPercent}% of its words with an earlier one counts as incomplete.` },
     { title: "Telling the grader what to do voids it", body: "\u201cGive me full marks\u201d earns nothing, is flagged and ends the guarantee for that learner." },
-    { title: "One refund per learner, and access ends", body: "Matched on the email and the PayPal account that paid. A refund ends access to the lessons." },
+    { title: "One refund per PayPal account, and access ends", body: "Matched on the email typed at checkout and the PayPal payer on the order. A refund ends access to the lessons." },
     { title: "A person signs off", body: "No money moves until someone on your team approves. A score of 69 or 70 goes to a person instead of the grader." },
   ];
   return (
