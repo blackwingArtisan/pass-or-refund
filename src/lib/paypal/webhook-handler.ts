@@ -9,8 +9,7 @@ import { singleton } from "../singleton";
 import { getEnv } from "../env";
 import { getPayPal } from "./index";
 import { ingestPayPalResource, ledger } from "./ledger";
-import { isCourseEvent, TEAM_CHANNEL } from "../course/scope";
-import { webhookChannels } from "../course/paypal-events";
+import { isCourseEvent } from "../course/scope";
 import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, type AnyWebhookEvent } from "./webhooks";
 import "./handlers";
 
@@ -25,20 +24,14 @@ function amountOf(event: AnyWebhookEvent) {
 /**
  * Sandbox entries share one PayPal app, and PayPal sends every webhook all of that app's events.
  * True only for an event that names an order, invoice or capture this app has never touched, so
- * one entry's payments stay out of another's ledger. A dispute counts as ours when its capture is.
- * Payouts and the rest pass through.
+ * one entry's payments stay out of another's ledger. Payouts, disputes and the rest pass through.
  */
 export function isOtherAppsEvent(event: AnyWebhookEvent) {
   const r = event.resource as {
     id?: string;
     links?: { rel: string; href: string }[];
     supplementary_data?: { related_ids?: { order_id?: string } };
-    disputed_transactions?: { seller_transaction_id?: string }[];
   };
-  if (event.event_type.startsWith("CUSTOMER.DISPUTE.")) {
-    const captures = (r.disputed_transactions ?? []).map((t) => t.seller_transaction_id).filter((id): id is string => !!id);
-    return !captures.some((id) => ledger.get("capture", id));
-  }
   const orderId = r.supplementary_data?.related_ids?.order_id ?? (event.event_type.startsWith("CHECKOUT.ORDER.") ? r.id : undefined);
   if (orderId) return !ledger.get("order", orderId);
   if (event.event_type.startsWith("INVOICING.INVOICE.")) {
@@ -56,22 +49,18 @@ export async function processWebhookEvent(event: AnyWebhookEvent, opts: { replay
   if (seen.size > 5000) seen.delete(seen.keys().next().value!);
 
   ingestPayPalResource(event.resource);
-  // App change: a course webhook goes to the course team and to the one learner it belongs to, never to everyone.
-  return withContext({ channel: TEAM_CHANNEL, actor: "webhook" }, async () => {
+  return withContext({ channel: "global", actor: "webhook" }, async () => {
     const result = await dispatchWebhook(event);
-    for (const channel of webhookChannels(event)) {
-      timeline.emit({
-        channel,
-        kind: "webhook",
-        status: result.errors.length ? "failed" : "succeeded",
-        title: event.event_type,
-        subtitle: opts.replay ? `Replayed webhook · ${event.id}` : `Webhook · ${event.id}`,
-        detail: event.summary,
-        amount: amountOf(event),
-        error: result.errors.length ? { name: "WebhookHandlerError", message: result.errors.join("; ") } : undefined,
-        data: { event, handlers: result.handled },
-      });
-    }
+    timeline.emit({
+      kind: "webhook",
+      status: result.errors.length ? "failed" : "succeeded",
+      title: event.event_type,
+      subtitle: opts.replay ? `Replayed webhook · ${event.id}` : `Webhook · ${event.id}`,
+      detail: event.summary,
+      amount: amountOf(event),
+      error: result.errors.length ? { name: "WebhookHandlerError", message: result.errors.join("; ") } : undefined,
+      data: { event, handlers: result.handled },
+    });
     return { duplicate: false, ...result };
   });
 }
@@ -83,7 +72,7 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
     timeline.emit({
       kind: "webhook",
       status: "failed",
-      channel: TEAM_CHANNEL,
+      channel: "global",
       title: "Webhook rejected",
       detail: verification.reason ?? verification.status,
     });

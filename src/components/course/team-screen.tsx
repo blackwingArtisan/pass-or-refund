@@ -13,7 +13,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea, type Tone } from "@/components/ui";
 import { CURRENCY, rubric } from "@/lib/course/content";
 import { formatCents, shortfallItems } from "@/lib/course/policy";
-import { isCourseStep, TEAM_CHANNEL } from "@/lib/course/scope";
+import { isCourseStep } from "@/lib/course/scope";
 import type { Attempt, EnrollmentStatus, EnrollmentView } from "@/lib/course/types";
 
 const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
@@ -97,30 +97,6 @@ function SettleReview({ enrollmentId, attempt, onSettled }: { enrollmentId: stri
   );
 }
 
-const DISPUTE_REASON: Record<string, string> = {
-  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: "says the course wasn't delivered",
-  MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: "says the course wasn't as described",
-  UNAUTHORISED: "says they didn't make the payment",
-  CREDIT_NOT_PROCESSED: "says a refund never arrived",
-  DUPLICATE_TRANSACTION: "says they were charged twice",
-};
-
-const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-
-/** What PayPal's webhooks confirmed, beside what we read back. */
-function WebhookLines({ enrollment }: { enrollment: EnrollmentView }) {
-  const lines = [
-    enrollment.payment?.webhookAt ? `PayPal's webhook confirmed the payment at ${clock(enrollment.payment.webhookAt)}.` : null,
-    enrollment.refund?.webhookAt ? `PayPal's webhook confirmed the refund at ${clock(enrollment.refund.webhookAt)}${enrollment.refund.webhookStatus && enrollment.refund.webhookStatus !== "COMPLETED" ? `, as ${enrollment.refund.webhookStatus}` : ""}.` : null,
-  ].filter(Boolean);
-  if (lines.length === 0) return null;
-  return (
-    <p data-testid="team-webhook" className="text-xs text-zinc-500">
-      {lines.join(" ")}
-    </p>
-  );
-}
-
 function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; onChange: () => void }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
@@ -186,18 +162,11 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
             </Button>
           </div>
         ) : null}
-        {enrollment.dispute ? (
-          <p data-testid="team-dispute" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <strong>PayPal dispute {enrollment.dispute.id}</strong> ({DISPUTE_REASON[enrollment.dispute.reason] ?? "opened by the learner"}, {formatCents(enrollment.dispute.amountCents)}). {enrollment.dispute.note}
-          </p>
-        ) : null}
         {enrollment.refund?.refundId ? (
           <p className="font-mono text-xs text-zinc-500">
             Refund {enrollment.refund.refundId}, {enrollment.refund.refundStatus}
-            {enrollment.refund.viaDispute ? ", paid by accepting the dispute" : ""}
           </p>
         ) : null}
-        <WebhookLines enrollment={enrollment} />
       </CardBody>
     </Card>
   );
@@ -205,7 +174,7 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
 
 export function TeamScreen() {
   const { kitFetch } = useKit();
-  const { steps } = useTimeline({ includeGlobal: false, channels: [TEAM_CHANNEL] });
+  const { steps } = useTimeline();
   const [enrollments, setEnrollments] = useState<EnrollmentView[] | null>(null);
   const load = useCallback(() => void kitFetch<{ enrollments: EnrollmentView[] }>("/api/team").then((r) => setEnrollments(r.enrollments)).catch(() => undefined), [kitFetch]);
 

@@ -18,13 +18,13 @@ import type { PayPalApi } from "@/lib/paypal/api";
 
 export const REFUND_COURSE_PURCHASE = "refund_course_purchase";
 
-export function updateRefund(enrollmentId: string, update: Partial<Refund>, status = requireEnrollment(enrollmentId).status) {
+function updateRefund(enrollmentId: string, update: Partial<Refund>, status = requireEnrollment(enrollmentId).status) {
   const enrollment = requireEnrollment(enrollmentId);
   return saveEnrollment({ ...enrollment, status, refund: { ...enrollment.refund!, ...update } });
 }
 
 /** Keeps the reason on the record, so the team and the learner see why nothing moved. */
-export function refuse(enrollmentId: string, message: string): never {
+function refuse(enrollmentId: string, message: string): never {
   updateRefund(enrollmentId, { error: message });
   throw new HttpError(409, message, "conflict");
 }
