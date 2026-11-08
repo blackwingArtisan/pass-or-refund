@@ -26,9 +26,8 @@ const anthropicAnswers = (status: number, type: string, message: string) => {
 
 let learners = 0;
 async function dueRefund() {
-  const email = `model-down${++learners}@example.com`;
-  const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
-  getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}` });
+  const { enrollment, orderId } = await startPurchase("Alex Rivera", `model-down${++learners}@example.com`);
+  getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com" });
   const { id } = await completePurchase(enrollment.id, orderId, CHANNEL);
   await submitAttempt(id, samples.fail1, CHANNEL, failing);
   readyForNextAttempt(id);

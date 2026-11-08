@@ -27,7 +27,7 @@ const newEmail = () => `agent-learner${++learners}@example.com`;
 
 async function buy(email = newEmail(), name = "Alex Rivera") {
   const { enrollment, orderId } = await startPurchase(name, email);
-  getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}` });
+  getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com" });
   return completePurchase(enrollment.id, orderId, CHANNEL);
 }
 

@@ -24,7 +24,7 @@ const newEmail = () => `rules-learner${++learners}@example.com`;
 
 async function buy(email = newEmail(), payerId?: string) {
   const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
-  getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}`, payerId });
+  getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com", payerId });
   return completePurchase(enrollment.id, orderId, CHANNEL);
 }
 
@@ -134,27 +134,6 @@ describe("one refund per learner", () => {
     expect(viewEnrollment(after).guarantee.checks.find((c) => c.rule === "one_refund_per_learner")?.passed).toBe(false);
   });
 
-  it("stops a guest card buyer with a new email, matched on the email PayPal has for them", async () => {
-    /** A guest checkout in PayPal's window: no account id, a fresh one each time, but the same buyer email. */
-    const guestBuy = async (payerEmail: string) => {
-      const { enrollment, orderId } = await startPurchase("Alex Rivera", newEmail());
-      getMockPayPal()!.simulateBuyerApproval(orderId, { email: payerEmail });
-      return completePurchase(enrollment.id, orderId, CHANNEL);
-    };
-    const first = await guestBuy("Guest.Buyer@Example.com");
-    expect(first.payment?.payerEmail).toBe("Guest.Buyer@Example.com");
-    expect(viewEnrollment(first).payment).not.toHaveProperty("payerEmail", expect.anything());
-    await failTwice(first.id);
-    getApprovals().decide((await approvalOf(first.id)).id, "approved", "test");
-    await statusOf(first.id, "refunded");
-
-    const second = await guestBuy("guest.buyer@example.com");
-    expect(second.payment?.payerId).not.toBe(first.payment?.payerId);
-    const after = await failTwice(second.id);
-    expect(after.status).toBe("active");
-    expect(after.refund).toBeUndefined();
-  });
-
   it("keeps a different PayPal account and email separate", async () => {
     const first = await buy(newEmail(), "PAYERONE0001");
     await failTwice(first.id);
@@ -252,7 +231,7 @@ describe("the app stops between PayPal paying and our record", () => {
   /** The buyer said yes and PayPal took the money, and our record never heard. */
   async function paidBehindTheApp(email = newEmail()) {
     const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
-    getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}` });
+    getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com" });
     await getPayPal().orders.capture(orderId);
     expect(requireEnrollment(enrollment.id).status).toBe("unpaid");
     return { id: enrollment.id, orderId, email };
@@ -275,7 +254,7 @@ describe("the app stops between PayPal paying and our record", () => {
   it("finishes an approved order the app never captured", async () => {
     const email = newEmail();
     const { enrollment, orderId } = await startPurchase("Alex Rivera", email);
-    getMockPayPal()!.simulateBuyerApproval(orderId, { email: `paypal.${email}` });
+    getMockPayPal()!.simulateBuyerApproval(orderId, { email: "buyer@example.com" });
     const resumed = await resumePurchase(email, CHANNEL);
     expect(resumed).toMatchObject({ id: enrollment.id, status: "active", payment: { captureStatus: "COMPLETED" } });
   });

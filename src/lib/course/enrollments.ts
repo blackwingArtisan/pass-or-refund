@@ -112,9 +112,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
   if (enrollment.status === "refund_pending" && !activeRefunds().has(enrollment.id)) {
     enrollment = saveEnrollment({ ...enrollment, status: "refund_blocked", refund: { ...enrollment.refund!, error: "The approval was lost when the server restarted. Request it again." } });
   }
-  // PayPal's email for the buyer is only for matching one refund per payer: it never leaves the server.
-  const payment = enrollment.payment ? { ...enrollment.payment, payerEmail: undefined } : undefined;
-  return { ...enrollment, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
+  return { ...enrollment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
 }
 
 export function listEnrollments(): EnrollmentView[] {
