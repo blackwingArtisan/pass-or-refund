@@ -54,6 +54,14 @@ export class ApprovalService {
     return this.settle(id, decision, by, note)!;
   }
 
+  /** The approval's time runs out now, as if it had run out `hoursAgo` hours back. For the mock clock in tests and demos. */
+  runOut(id: string, hoursAgo = 0): Approval | undefined {
+    const a = this.approvals.get(id);
+    if (!a || a.state !== "pending") return a ? { ...a } : undefined;
+    a.expiresAt = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+    return this.settle(id, "expired", "system");
+  }
+
   private settle(id: string, state: Exclude<ApprovalState, "pending">, by: string, note?: string): Approval | undefined {
     const a = this.approvals.get(id);
     if (!a || a.state !== "pending") return a;

@@ -10,6 +10,7 @@ import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
 import { lockRubric } from "./rubric-lock";
 import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
+import { overdueFor } from "./overdue";
 import { isSampleId } from "./sample-ids";
 import type { Enrollment, EnrollmentStatus, EnrollmentView, GuaranteeDecision, PendingApproval } from "./types";
 
@@ -143,7 +144,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
   const { learnerEmail, ...shown } = enrollment;
   void learnerEmail;
   const payment = enrollment.payment ? { ...enrollment.payment, payerEmail: undefined } : undefined;
-  return { ...shown, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter) };
+  return { ...shown, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter), overdue: overdueFor(enrollment) };
 }
 
 /** Paid enrollments, newest first. Test-suite buyers are left out unless asked for. */

@@ -1,6 +1,7 @@
 /** Records and views shared by server and browser. Types only. */
 import type { Outcome } from "@/lib/grading/decide";
 import type { ModelCap, ScoredItem } from "@/lib/grading/frozen/score-items";
+import type { Overdue } from "./overdue";
 
 export type EnrollmentStatus = "unpaid" | "active" | "passed" | "under_review" | "refund_pending" | "refund_review" | "refund_declined" | "refund_blocked" | "refunded";
 
@@ -150,6 +151,8 @@ export interface Refund {
   viaDispute?: string;
   /** Set when the agent sent the case to a person first. */
   review?: RefundReview;
+  /** When the approval ran out with nobody on the course team deciding. Shown as overdue until someone acts. */
+  overdueSince?: string;
 }
 
 /** A PayPal dispute the learner opened on this payment (CUSTOMER.DISPUTE.* webhooks). */
@@ -217,4 +220,6 @@ export interface EnrollmentView extends Omit<Enrollment, "learnerEmail"> {
   guarantee: GuaranteeDecision;
   /** When the next attempt opens, or null if it's open now. */
   nextAttemptAt: string | null;
+  /** Set when the course team has taken longer than the guarantee allows. */
+  overdue: Overdue | null;
 }

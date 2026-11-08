@@ -20,6 +20,8 @@ export const GUARANTEE_TERMS = [
   "One refund per PayPal account and per email for each course, and a refund ends your access to the lessons.",
   "Trying to trick the grader voids the guarantee.",
   "A person on the course team approves every refund before any money moves.",
+  "If the course team declines, they have to say why. You see their reason, it's listed on the public cohort page without your name, and you can still open a dispute with PayPal.",
+  "If nobody on the course team decides within an hour, your refund is marked overdue, with the hours, on the public cohort page until someone does.",
 ];
 
 interface AttemptFacts {
