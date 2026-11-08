@@ -32,7 +32,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 | PayPal API | Endpoint(s) | Where and why |
 |---|---|---|
-| JS SDK v6 (buyer approval) | `web-sdk/v6/core`, `PayPalOneTimePaymentButton` | The buy button on `/course` opens PayPal's own checkout window. With no sandbox login, choose **Pay with Debit or Credit Card** there and use PayPal's test card (4111 1111 1111 1111, any future date, any CVV); the sandbox suite and the demo pay this way. A server-side test card button sits beside it as a shortcut. |
+| JS SDK v6 (buyer approval) | `web-sdk/v6/core`, `usePayPalOneTimePaymentSession` + `<paypal-button>` | The buy button on `/course` opens PayPal's own checkout window. The page says how to pay with no PayPal login: choose **Pay with Debit or Credit Card** inside PayPal's window and use PayPal's sandbox test card (4111 1111 1111 1111, 12/30, CVV 123), shown under the button. The sandbox suite pays this way on desktop Chrome and on the iPhone 15 and Pixel 7 presets. While the window is open the page also asks the server every few seconds, which reads the order from PayPal: one of PayPal's checkout pages takes the payment but never tells the page, and then the server finishes the purchase and the page closes PayPal's window. |
 | Orders v2 | `POST /v2/checkout/orders`, `GET /v2/checkout/orders/{id}`, `POST .../capture` | One `CAPTURE` order per enrollment. The server sets the amount. |
 | Payments v2 | `GET /v2/payments/captures/{id}`, `POST .../refund`, `GET /v2/payments/refunds/{id}` | The refund amount comes from the capture, and the result is read back after the refund. |
 
@@ -108,7 +108,7 @@ AG Studio 3.0.0 is a trial-licence npm dependency from AG Grid Ltd, used here fo
 3. At checkout, log in with the **Personal** sandbox account (password on the account's details page).
 4. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`.
 
-With `DEMO_TEST_CARD=1`, no buyer login is needed: **Pay with sandbox test card** completes the purchase.
+No buyer login is needed: pay with PayPal's test card inside PayPal's window, as the course page says. For automated tests, `DEMO_TEST_CARD=1` adds a server-side **Pay with sandbox test card** button, shown only on `/course?test-card=1`, so learners never see it.
 
 ## Deploy
 

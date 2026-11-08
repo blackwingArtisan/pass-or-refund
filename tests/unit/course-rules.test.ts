@@ -8,7 +8,7 @@ import { isCreditRefusal } from "@/lib/ai/client";
 import { markStudyListReviewed, settleReview, skipAttemptGap, submitAttempt, tickStudyItem } from "@/lib/course/attempts";
 import { activeRefunds, requireEnrollment, saveEnrollment, viewEnrollment } from "@/lib/course/enrollments";
 import { answerSimilarity, ATTEMPT_GAP_HOURS, missedItems, nearCopyOf, NEAR_COPY_SIMILARITY, shortfallItems } from "@/lib/course/policy";
-import { completePurchase, recoverPayment, resumePurchase, startPurchase } from "@/lib/course/purchase";
+import { checkCheckout, completePurchase, recoverPayment, resumePurchase, startPurchase } from "@/lib/course/purchase";
 import { caughtUpWithPayPal } from "@/lib/course/recovery";
 import { retryRefund } from "@/lib/course/refund";
 import { samples } from "@/lib/course/samples";
@@ -339,6 +339,32 @@ describe("the app stops between PayPal paying and our record", () => {
     const { enrollment } = await retryRefund(id, CHANNEL);
     expect(enrollment).toMatchObject({ status: "refunded", refund: { refundStatus: "COMPLETED", error: undefined } });
     expect(refundCapture).not.toHaveBeenCalled();
+  });
+});
+
+describe("PayPal's window takes the payment but never tells the page", () => {
+  it("does nothing while the buyer hasn't approved in PayPal", async () => {
+    const { enrollment } = await startPurchase("Alex Rivera", newEmail());
+    const capture = vi.spyOn(getPayPal().orders, "capture");
+    expect((await checkCheckout(enrollment.id, CHANNEL)).status).toBe("unpaid");
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it("finishes the purchase once PayPal says the buyer approved", async () => {
+    const { enrollment, orderId } = await startPurchase("Alex Rivera", newEmail());
+    getMockPayPal()!.simulateBuyerApproval(orderId, { email: "silent.window@example.com" });
+    const paid = await checkCheckout(enrollment.id, CHANNEL);
+    expect(paid).toMatchObject({ status: "active", payment: { orderId, captureStatus: "COMPLETED", capturedCents: 4_900 } });
+    expect((await getPayPal().orders.get(orderId)).status).toBe("COMPLETED");
+  });
+
+  it("captures once when the window and the page's check finish at the same moment", async () => {
+    const { enrollment, orderId } = await startPurchase("Alex Rivera", newEmail());
+    getMockPayPal()!.simulateBuyerApproval(orderId, { email: "both.at.once@example.com" });
+    const capture = vi.spyOn(getPayPal().orders, "capture");
+    const [fromWindow, fromCheck] = await Promise.all([completePurchase(enrollment.id, orderId, CHANNEL), checkCheckout(enrollment.id, CHANNEL)]);
+    expect(fromWindow.payment?.captureId).toBe(fromCheck.payment?.captureId);
+    expect(capture).toHaveBeenCalledTimes(1);
   });
 });
 
