@@ -18,6 +18,7 @@ import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
 import { Guarantee } from "./guarantee";
+import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
 const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
   { id: "fail1", label: "Weak answers" },
@@ -125,7 +126,7 @@ function NextAttempt({ opensAt, attemptNumber, onSkip }: { opensAt: string; atte
   );
 }
 
-function Certificate({ learnerName, attempt }: { learnerName: string; attempt: Attempt }) {
+function Certificate({ learnerName, attempt, lock }: { learnerName: string; attempt: Attempt; lock?: EnrollmentView["rubric"] }) {
   const date = new Date(attempt.submittedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
     <div data-testid="certificate" className="rounded-2xl border-2 border-brand-200 bg-gradient-to-b from-brand-50 to-white px-6 py-10 text-center">
@@ -138,6 +139,7 @@ function Certificate({ learnerName, attempt }: { learnerName: string; attempt: A
       <p className="mt-1 text-sm text-zinc-500">
         {date}, by {course.creator}
       </p>
+      <RubricTerms lock={lock} className="mt-4 justify-center text-xs text-zinc-500" />
     </div>
   );
 }
@@ -305,7 +307,18 @@ export function LearnerScreen({ id }: { id: string }) {
 
   return (
     <>
-      <PageHeader eyebrow={`Welcome, ${enrollment.learnerName}`} title={course.title} description={enrollment.payment?.capturedCents === undefined ? undefined : `${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`} />
+      <PageHeader
+        eyebrow={`Welcome, ${enrollment.learnerName}`}
+        title={course.title}
+        description={
+          enrollment.payment?.capturedCents === undefined ? undefined : (
+            <span data-testid="receipt" className="flex flex-col gap-1">
+              <span>{`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`}</span>
+              <RubricTerms lock={enrollment.rubric} className="text-sm" />
+            </span>
+          )
+        }
+      />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
           {enrollment.status === "unpaid" ? (
@@ -319,7 +332,8 @@ export function LearnerScreen({ id }: { id: string }) {
             </Notice>
           ) : null}
           {enrollment.status === "refunded" ? <RefundIssued enrollment={enrollment} /> : null}
-          {enrollment.status === "passed" && latest ? <Certificate learnerName={enrollment.learnerName} attempt={latest} /> : null}
+          {enrollment.contest ? <ContestStatus enrollment={enrollment} /> : null}
+          {enrollment.status === "passed" && latest ? <Certificate learnerName={enrollment.learnerName} attempt={latest} lock={enrollment.rubric} /> : null}
           {enrollment.status === "under_review" ? (
             <Notice tone="info" icon={<Clock className="size-4" />} testId="under-review">
               <strong>Under review, answer within one business day.</strong> Your score sits right at the pass mark, so a person will look at it. No refund yet.
@@ -344,6 +358,7 @@ export function LearnerScreen({ id }: { id: string }) {
           {canAttempt && latest?.outcome === "fail" ? (
             <>
               <AfterFail enrollment={enrollment} attempt={latest} onTick={(item) => update("review", { item })} onReviewed={() => update("review", {})} />
+              <ContestLine enrollment={enrollment} onChange={setEnrollment} />
               <Guarantee />
             </>
           ) : null}

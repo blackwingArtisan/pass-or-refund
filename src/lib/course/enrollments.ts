@@ -8,6 +8,7 @@ import type { PayPalApi } from "@/lib/paypal/api";
 import { singleton } from "@/lib/singleton";
 import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
+import { lockRubric } from "./rubric-lock";
 import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
 import type { Enrollment, EnrollmentStatus, EnrollmentView, GuaranteeDecision, PendingApproval } from "./types";
 
@@ -27,6 +28,8 @@ export function createEnrollment(learnerName: string, learnerEmail: string): Enr
     createdAt: new Date().toISOString(),
     priceCents: COURSE_PRICE_CENTS,
     attempts: [],
+    // The terms the learner sees at checkout are the ones they're graded on.
+    rubric: lockRubric(),
   });
 }
 

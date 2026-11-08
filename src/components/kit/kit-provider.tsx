@@ -11,6 +11,8 @@ export interface KitStatus {
   paypal: { mode: "mock" | "sandbox"; clientId: string | null; buyerEmail: string; webhookConfigured: boolean; testCard: boolean };
   ai: { mode: "live" | "mock"; models: { default: string; smart: string }; budget: { capUsd: number; spentUsd: number; remainingUsd: number; calls: number } };
   policy: { currency: string; approvalThreshold: string; maxPerAction: string; maxPerDay: string };
+  /** The rubric on sale now. Each purchase locks it. */
+  rubric?: { version: string; fingerprint: string };
 }
 
 export class ApiError extends Error {

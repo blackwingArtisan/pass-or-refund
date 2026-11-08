@@ -17,6 +17,9 @@ People don't trust online courses, because a guarantee usually means small print
 - **Buy with the guarantee in view.** The terms sit next to the pay button. PayPal captures the payment at purchase.
 - **Take the final check.** Four written questions, 25 points each, on a short sample course, *Sharp at Home* by a made-up creator.
 - **See your grade point by point.** Every rubric item shows met, partial or missed, with the words quoted from your answer. Missed items become your study list.
+- **The terms can't move after you pay.** The course page shows the rubric version and its fingerprint (the first 12 characters of the rubric's SHA-256). Buying locks both on your enrollment, your receipt and certificate show them, and grading uses that locked version. If the text on file no longer matched the fingerprint, grading would stop and count nothing (`src/lib/course/rubric-lock.ts`).
+- **Contest one line, once.** After a failed first attempt and before the retake, you can contest one rubric line you lost points on and say why. A person on `/team` reads your case beside the grader's quote and rules. Upheld, the line counts as met and the sealed scoring code adds the attempt up again, which can turn it into a pass. Not upheld, the grade stands and you read their note. Taking the retake first withdraws the contest.
+- **See how learners did before you buy.** The home page shows the pass and refund rates from `/cohort`.
 - **Pass:** you get a certificate, and no refund happens.
 - **Fail once:** you tick off the study list item by item, and your next attempt opens 24 hours later. Judges can press **Skip the wait (demo)** to fail twice right away.
 - **Fail twice:** a refund agent checks the policy, proposes the refund with its reasons, and stops. After a person on the course team approves, PayPal pays it and you see "Refund issued, sorry we let you down", with the refund id and status read back from PayPal.
