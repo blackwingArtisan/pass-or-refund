@@ -225,6 +225,33 @@ test.describe("who sees what", () => {
   });
 });
 
+test.describe("the course team in two clicks", () => {
+  test("the For judges button opens the course team view signed in, and a stranger still needs the passcode", { tag: "@live" }, async ({ browser }) => {
+    const baseURL = test.info().project.use.baseURL!;
+    const judge = await browser.newContext({ baseURL, storageState: { cookies: testRunState(baseURL).cookies, origins: [] } });
+    const page = await judge.newPage();
+    await page.goto("/");
+    expect((await judge.request.get("/api/team")).status()).toBe(401);
+    await page.getByTestId("open-team-view").click();
+    await page.waitForURL(/\/team$/);
+    await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
+    await expect(page.getByTestId("team-passcode-form")).toHaveCount(0);
+    const team = await judge.request.get("/api/team");
+    expect(team.status()).toBe(200);
+    expect(EMAIL_SHAPE.exec(await team.text())?.[0] ?? "none").toBe("none");
+    await page.screenshot({ path: "screenshots/team-two-clicks.png" });
+    await judge.close();
+
+    // The button's address with a wrong passcode, or none, signs nobody in.
+    const stranger = await browser.newContext({ baseURL, storageState: { cookies: testRunState(baseURL).cookies, origins: [] } });
+    for (const form of [{ passcode: "not-it" }, { passcode: "" }] as Record<string, string>[]) {
+      expect((await stranger.request.post("/api/team/judge", { form, maxRedirects: 0 })).status()).toBe(303);
+      expect((await stranger.request.get("/api/team")).status()).toBe(401);
+    }
+    await stranger.close();
+  });
+});
+
 test.describe("the story on the first screen", () => {
   test("the home page leads with the researched headline and sourced pain points", async ({ page }) => {
     await page.goto("/");
