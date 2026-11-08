@@ -1,7 +1,7 @@
 "use client";
 
 import { showError } from "@/components/error-toast";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useKit } from "@/components/kit/kit-provider";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
@@ -47,6 +47,16 @@ export function CourseScreen() {
     router.push(`/learn/${enrollmentId.current}`);
   }
 
+  /** PayPal's window took the payment but didn't say so: the server read the order, and the learner goes on. */
+  const checkPayment = useCallback(async () => {
+    const id = enrollmentId.current;
+    if (!id) return false;
+    const enrollment = await kitFetch<EnrollmentView>(`/api/enrollments/${id}/check-payment`, { method: "POST" });
+    if (enrollment.status === "unpaid") return false;
+    router.push(`/learn/${id}`);
+    return true;
+  }, [kitFetch, router]);
+
   return (
     <>
       <PageHeader eyebrow={`By ${course.creator}`} title={course.title} description={course.subtitle} />
@@ -82,6 +92,7 @@ export function CourseScreen() {
             <CheckoutButton
               createOrder={createOrder}
               onApprove={onApprove}
+              checkPayment={checkPayment}
               onError={(e) => {
                 if (!(e instanceof AlreadyPaid)) showError(toast, "The payment didn't go through", e);
               }}

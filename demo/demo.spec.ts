@@ -63,7 +63,8 @@ test("demo", async ({ page, request }) => {
   let popup: Page | undefined;
 
   // 1. The guarantee beside the buy button
-  await page.goto("/course");
+  // ?test-card=1 keeps the server-side test card as a fallback, if PayPal's window fails to load.
+  await page.goto("/course?test-card=1");
   const guarantee = page.getByTestId("guarantee");
   await guarantee.waitFor();
   if (sandbox) await page.getByTestId("paypal-v6-button").locator("paypal-button, button, [role=button]").first().waitFor({ timeout: 60_000 });

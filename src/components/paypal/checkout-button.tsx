@@ -4,8 +4,11 @@
  * Buyer approval button.
  *   - PAYPAL_MODE=sandbox: the real PayPal JS SDK v6 button (@paypal/react-paypal-js/sdk-v6),
  *     environment hard-coded to "sandbox".
- *     Sandbox demo recordings (DEMO_TEST_CARD=1) also get a test-card button, because the
- *     real button needs a buyer login.
+ *     Without a sandbox login, the buyer picks "Pay with Debit or Credit Card" in PayPal's window
+ *     and uses PayPal's sandbox test card, which the page shows. With DEMO_TEST_CARD=1, a
+ *     server-side test-card button also appears, but only on `?test-card=1`, for automated tests.
+ *     `checkPayment` covers a PayPal window that takes the payment but never tells the page: while
+ *     the window is open the page asks the server, which reads the order from PayPal.
  *   - PAYPAL_MODE=mock: a clearly labelled "Simulate PayPal approval" button + dialog that
  *     follows the same server flow (create order -> buyer approves -> onApprove).
  *
@@ -14,8 +17,8 @@
  *     onApprove={async ({ orderId }) => { await kitFetch(`/api/paypal/orders/${orderId}/capture`, { method: "POST" }) }}
  *   />
  */
-import { useState } from "react";
-import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
+import { PayPalProvider, usePayPal, usePayPalOneTimePaymentSession } from "@paypal/react-paypal-js/sdk-v6";
 import { CreditCard, FlaskConical, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "../ui/button";
 import { Modal } from "../ui/modal";
@@ -33,9 +36,19 @@ export interface CheckoutButtonProps {
   label?: string;
   /** Mock only: the buyer the simulated PayPal window approves as. Defaults to the sandbox buyer. */
   buyerEmail?: string;
+  /**
+   * Sandbox: asked every few seconds while PayPal's window is open. Return true once the payment is
+   * recorded (the server read the order from PayPal), and the window is closed for the buyer.
+   */
+  checkPayment?: (orderId: string) => Promise<boolean>;
 }
 
 const SANDBOX = "sandbox" as const; // never read from env: v6 picks the environment from this prop only
+const CHECK_EVERY_MS = 2_500;
+const CHECK_FOR_MS = 15 * 60_000;
+
+/** The server-side test card is for automated tests: it only shows on `?test-card=1`. */
+const testCardRequested = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("test-card") === "1";
 
 export function CheckoutButton(props: CheckoutButtonProps) {
   const { status } = useKit();
@@ -45,23 +58,92 @@ export function CheckoutButton(props: CheckoutButtonProps) {
   return (
     <div className="w-full max-w-sm" data-testid="paypal-v6-button">
       <PayPalProvider clientId={status.paypal.clientId} environment={SANDBOX} components={["paypal-payments"]} pageType="checkout">
-        <PayPalOneTimePaymentButton
-          presentationMode="auto"
-          disabled={props.disabled}
-          createOrder={props.createOrder}
-          onApprove={async (data) => {
-            await props.onApprove({ orderId: data.orderId, payerId: data.payerId });
-          }}
-          onCancel={() => props.onCancel?.()}
-          onError={(e) => props.onError?.(new Error(e?.message ?? "PayPal checkout error"))}
-        />
+        <PayPalWindowButton {...props} />
       </PayPalProvider>
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
-        <ShieldCheck className="size-3.5" /> PayPal sandbox: log in with your sandbox buyer account.
-      </p>
-      {status.paypal.testCard ? <TestCardButton {...props} /> : null}
+      <PayWithoutAccount />
+      {status.paypal.testCard && testCardRequested() ? <TestCardButton {...props} /> : null}
     </div>
   );
+}
+
+/** How a judge pays with no PayPal login: PayPal's own guest card form, with PayPal's public sandbox test card. */
+function PayWithoutAccount() {
+  return (
+    <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600" data-testid="pay-without-account">
+      <p className="flex items-center gap-1.5 font-semibold text-zinc-800">
+        <ShieldCheck className="size-3.5 shrink-0 text-brand" /> No PayPal account? Pay with debit or credit card inside PayPal&rsquo;s window.
+      </p>
+      <p className="mt-1">This is PayPal&rsquo;s sandbox, so no real money moves. Use PayPal&rsquo;s sandbox test card:</p>
+      <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5" data-testid="sandbox-card-details">
+        <dt className="text-zinc-500">Card</dt>
+        <dd className="font-mono text-zinc-900">4111 1111 1111 1111</dd>
+        <dt className="text-zinc-500">Expiry</dt>
+        <dd className="font-mono text-zinc-900">12/30, or any future date</dd>
+        <dt className="text-zinc-500">CVV</dt>
+        <dd className="font-mono text-zinc-900">123</dd>
+      </dl>
+      <p className="mt-1.5">Any name, US address and phone number work.</p>
+    </div>
+  );
+}
+
+/**
+ * PayPal's v6 button: the same `<paypal-button>` that PayPalOneTimePaymentButton renders, with the
+ * session in hand so the page can close PayPal's window once the server has the payment.
+ */
+function PayPalWindowButton({ createOrder, onApprove, onCancel, onError, disabled, checkPayment }: CheckoutButtonProps) {
+  const { isHydrated } = usePayPal();
+  const checking = useRef<{ orderId: string; until: number } | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const stop = useCallback(() => {
+    checking.current = null;
+    setOrderId(null);
+  }, []);
+
+  const session = usePayPalOneTimePaymentSession({
+    presentationMode: "auto",
+    createOrder: async () => {
+      const created = await createOrder();
+      checking.current = { orderId: created.orderId, until: Date.now() + CHECK_FOR_MS };
+      setOrderId(created.orderId);
+      return created;
+    },
+    onApprove: async (data) => {
+      stop();
+      await onApprove({ orderId: data.orderId, payerId: data.payerId });
+    },
+    onCancel: () => {
+      stop();
+      onCancel?.();
+    },
+    onError: (e) => {
+      stop();
+      onError?.(new Error(e?.message ?? "PayPal checkout error"));
+    },
+  });
+  const { handleCancel, handleClick, isPending, error } = session;
+
+  useEffect(() => {
+    if (!orderId || !checkPayment) return;
+    const timer = setInterval(async () => {
+      const current = checking.current;
+      if (!current || current.orderId !== orderId) return;
+      if (Date.now() > current.until) return stop();
+      const paid = await checkPayment(orderId).catch(() => false);
+      if (paid && checking.current?.orderId === orderId) {
+        stop();
+        handleCancel(); // closes PayPal's window, which took the payment but never told the page
+      }
+    }, CHECK_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [orderId, checkPayment, handleCancel, stop]);
+
+  useEffect(() => {
+    if (error) console.error(error);
+  }, [error]);
+
+  if (!isHydrated) return <div />;
+  return createElement("paypal-button", { onClick: handleClick, type: "pay", disabled: disabled || isPending || error !== null ? true : undefined });
 }
 
 function TestCardButton({ createOrder, onApprove, onError, disabled }: CheckoutButtonProps) {
