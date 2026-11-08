@@ -1,10 +1,10 @@
-import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { creatorCase } from "@/lib/course/creator-case";
 import { formatCents } from "@/lib/course/policy";
 import { teamPasscode } from "@/lib/course/team-access";
-import { ButtonLink } from "../ui/button";
+import { buttonClass, ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 import { CohortStats } from "../course/rubric-receipt";
 import { StoryEyebrow } from "./story";
@@ -67,10 +67,20 @@ function ForJudges() {
         <KeyRound className="size-4 text-brand" /> For judges
       </p>
       <p className="mt-1">
-        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team on{" "}
-        <a href="/team" className="font-medium text-brand underline">/team</a>. The team passcode is{" "}
-        <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code>. To skip the typing, turn on <span className="font-medium text-zinc-900">Judge shortcuts</span> above the final check and pick a prepared answer.
+        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team. To skip the typing, turn on <span className="font-medium text-zinc-900">Judge shortcuts</span> above the final check and pick a prepared answer.
       </p>
+      {/* One click to /team, signed in: the form carries the printed passcode. */}
+      <form method="post" action="/api/team/judge" className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <input type="hidden" name="passcode" value={teamPasscode()} />
+        <button type="submit" data-testid="open-team-view" className={buttonClass("secondary", "sm")}>
+          <Users className="size-4" /> Open the course team view
+        </button>
+        <span className="text-xs text-zinc-500">
+          Or type the passcode{" "}
+          <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code> on{" "}
+          <a href="/team" className="underline">/team</a>.
+        </span>
+      </form>
     </div>
   );
 }
