@@ -68,12 +68,12 @@ async function unlockTeam(page: Page, request: APIRequestContext) {
 
 test("demo", async ({ page, request, browser, baseURL }) => {
   test.setTimeout(600_000);
+  // The main video starts with the page, so the cut's clock starts here too; nothing is kept until the story starts.
+  const cuts = new DemoCuts({ paused: true });
   const status = await (await request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
   const side = await sideLearners(browser, baseURL!, sandbox);
 
-  const cuts = new DemoCuts();
-  cuts.resume(); // The setup above is off camera.
   const clock = new DemoClock(420);
   const beat = (label: string) => {
     clock.check(label);
@@ -86,6 +86,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const headline = page.getByTestId("story-headline");
   await headline.waitFor();
   await unlockTeam(page, request);
+  cuts.resume(); // The side learners above are off camera, and the cut opens on the loaded home page.
   await sleep(500);
   await highlight(page, headline, 2600);
   await caption(page, "Course refund promises are hard to check, so buyers don't trust them.", { ms: 3200 });
@@ -108,6 +109,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     popup = await payInPayPalWindow(page, {
       onOpen: async () => {
         openedAt = Date.now();
+        cuts.pause(0.3); // While PayPal's window is open, its own recording plays instead.
       },
       onForm: async (p) => {
         marks.push(since());
@@ -119,6 +121,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     }).catch(async (e) => {
       console.log(`[demo] PayPal window failed, paying with the server-side test card: ${(e as Error).message.split("\n")[0]}`);
       paypalWindow = false;
+      cuts.resume(); // No window to splice in: the fallback purchase stays on camera.
       for (const p of page.context().pages()) if (p !== page) await p.close().catch(() => undefined);
       await page.goto("/course?test-card=1");
       await page.getByTestId("learner-name").filter({ visible: true }).fill("Jordan Lee");
@@ -127,6 +130,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
       return undefined;
     });
     if (paypalWindow && marks.length === 2) {
+      // The main video already stopped when the window opened, so only PayPal's stretches go in here.
       cuts.clips("popup", [
         { from: marks[0], to: marks[0] + 1.6 },
         { from: marks[1] - 0.4, to: marks[1] + 1.8 },
@@ -140,7 +144,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   }
   await page.waitForURL(/\/learn\/en_/, { timeout: 90_000 });
   await page.getByTestId("submit-attempt").waitFor();
-  if (paypalWindow) cuts.resume(); // after PayPal's window; otherwise the main video never stopped
+  cuts.resume(); // after PayPal's window; a no-op when the main video never stopped
   await caption(page, "Paid: PayPal captured $49.00.", { ms: 2200 });
   beat("bought");
 
