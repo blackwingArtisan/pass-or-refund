@@ -28,13 +28,14 @@ People don't trust online courses, because a guarantee usually means small print
 - **Buy with the guarantee in view.** The terms sit next to the pay button. PayPal captures the payment at purchase.
 - **Take the final check.** Four written questions, 25 points each, on a short sample course, *Sharp at Home* by a made-up creator.
 - **See your grade point by point.** Every rubric item shows met, partial or missed, with the words quoted from your answer. Missed items become your study list.
-- **The terms can't move after you pay.** The course page shows the rubric version and its fingerprint (the first 12 characters of the rubric's SHA-256). Buying locks both on your enrollment, your receipt and certificate show them, and grading uses that locked version. If the text on file no longer matched the fingerprint, grading would stop and count nothing (`src/lib/course/rubric-lock.ts`).
+- **The terms can't move after you pay.** The course page shows the rubric version and its fingerprint (the first 12 characters of the rubric's SHA-256). Buying locks both on your enrollment, your receipt and certificate show them, and grading uses that locked version. If the text on file no longer matched the fingerprint, grading would stop and count nothing (`src/lib/course/rubric-lock.ts`). **Check it yourself:** "Check it against the public rubric" on the receipt or certificate opens `/rubric`, which shows the rubric on sale and says "Matches" or "Changed since you bought". `/api/rubric/v1.json` serves the exact bytes the fingerprint is taken from, so `shasum -a 256` gives the same first 12 characters.
 - **Contest one line, once.** After a failed first attempt and before the retake, you can contest one rubric line you lost points on and say why. A person on `/team` reads your case beside the grader's quote and rules. Upheld, the line counts as met and the sealed scoring code adds the attempt up again, which can turn it into a pass. Not upheld, the grade stands and you read their note. Taking the retake first withdraws the contest.
 - **See how learners did before you buy.** The home page shows the pass and refund rates from `/cohort`.
 - **Pass:** you get a certificate, and no refund happens. To see one without passing, the home page links to a made-up sample learner's certificate (`/learn/sample_pass`), labelled as a sample.
 - **Fail once:** you tick off the study list item by item, and your next attempt opens 24 hours later. Judges can press **Skip the wait (demo)** to fail twice right away.
-- **Fail twice:** a refund agent checks the policy, proposes the refund with its reasons, and stops. After a person on the course team approves, PayPal pays it and you see "Refund issued, sorry we let you down", with the refund id and status read back from PayPal.
-- **A person declines:** no money moves, and you read the decision and their note on your page.
+- **Fail twice:** a refund agent checks the policy, reads the rubric lines you fell short on (never your answers), and writes you a short note and the course team a summary. It proposes the refund with its reasons and stops. If you contested a line, or a grade was a close call code decided, it can instead ask a person on the team to look first; they send it on for approval or decline it with a note. After a person approves, PayPal pays it and you see "Refund issued, sorry we let you down", with the refund id and status read back from PayPal.
+- **A person declines:** no money moves, and you read the decision and their note on your page. Every decline and its note is listed on the public `/cohort` page, without your name, and you can still open a dispute with PayPal.
+- **Nobody decides in time:** the course team has an hour. After that the refund shows "overdue, X hours" on `/team` and on `/cohort` until someone acts.
 - **A score of 69 or 70:** you see "under review, answer within one business day", and no refund starts. On `/team` a person goes through every item that lost points, one tick each, adds a note and decides. Your score stays as graded, and a fail counts like any other, so a second one sends the refund to the same approval.
 - **Course creators** see `/cohort`: pass rate by course and question, refunds, and the rubric items learners miss most, so they know which lesson to fix. Until real learners arrive it shows a labelled sample cohort of 36 made-up learners graded on the real rubric.
 
@@ -65,7 +66,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 | Where | Model | What it does |
 |---|---|---|
 | Grading the final check | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Gives each rubric item a verdict with a verbatim quote, and flags attempts to instruct the grader. It never adds up points. |
-| Refund agent | Claude Haiku 5.5 (`claude-haiku-5-5`) | After a second fail, reads the policy check and proposes the refund with reasons. It sees scores and rule results, never the learner's answers. It runs only when code says a refund is due. |
+| Refund agent | Claude Haiku 5.5 (`claude-haiku-5-5`) | After a second fail, reads the policy check, the rubric lines the learner fell short on and any contest. It writes the learner's note and the team's summary, then either proposes the refund with reasons or, for a contested or close case, sends it to a person first (`route_refund_to_review`). It sees scores, rubric lines and rule results, never the learner's answers. Code decides which cases may go to review, enforces the policy and the amount, and the Guard waits for a person. With the model out, code writes the notes and proposes. |
 
 - **AI suggests, code and a person decide.** Code turns verdicts into points (met = full, partial = half rounded down, missed = 0), applies caps and adds up. Under 66 fails and over 73 passes. From 66 to 73 it grades twice more and takes the median: 71 or more passes, 68 or less fails, and 69 or 70 goes to a person.
 - **The method is sealed.** Prompts, rules and scoring in `src/lib/grading/frozen/` are byte copies of the set tested on held-out data. A unit test checks their hashes.
@@ -95,7 +96,7 @@ Browser (Next.js 16 / React 19, Tailwind)
 Next.js route handlers (Node)
   ├─ lib/course   enrollments, guarantee policy, purchase, attempts, refund, cohort results
   ├─ lib/grading  sealed prompts and scoring, the decision band, mock verdicts
-  ├─ agents       refund agent; tools check_refund_policy, capture_course_payment and refund_course_purchase (risk: money)
+  ├─ agents       refund agent; tools check_refund_policy, route_refund_to_review, capture_course_payment and refund_course_purchase (risk: money)
   ├─ lib/agent    Guard: caps, approvals, idempotency, audit
   ├─ lib/paypal   Server SDK client for Orders and Payments in sandbox, in-memory mock otherwise
   ├─ lib/ai       Claude Sonnet 5.5 structured output; daily spend cap
@@ -115,7 +116,7 @@ Open http://localhost:3020, go to **Course**, buy it, then use the demo answer b
 
 Checks: `npm run check` (lint, typecheck, unit tests, build, and proof that no sponsor code is in the build), `npm run test:e2e` (mock PayPal), `ENGINE=webkit npm run test:e2e:engines` (also `firefox`, `iphone`, `android`), `npm run test:e2e:sandbox` (real sandbox), `npm run test:sandbox`. Set `E2E_BASE_URL` to run the sandbox flows against a deployed copy.
 
-`npm run demo:record` builds the app, plays the whole story and saves the raw recording; `npm run demo:edit` drops the grading waits, splices in PayPal's checkout window and writes `videos/demo-pass-or-refund.mp4` (under 3:00). The submission cut runs on the sandbox with live grading: `DEMO_PAYPAL_MODE=sandbox DEMO_AI_MODE=live npm run demo:record && npm run demo:edit`.
+`npm run demo:record` builds the app, plays the whole story and saves the raw recording; `npm run demo:edit` drops the grading waits, splices in PayPal's checkout window and writes `videos/demo-pass-or-refund.mp4` (under 2:30, PayPal's window included). The captions are the voiceover script: `videos/demo-voiceover.txt` lists each line at its time in the cut. The submission cut runs on the sandbox with live grading: `DEMO_PAYPAL_MODE=sandbox DEMO_AI_MODE=live npm run demo:record && npm run demo:edit`.
 
 ## The cohort dashboard
 

@@ -65,7 +65,8 @@ export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { c
 export async function runAgentToCompletion(def: AgentDefinition, input: AgentInput, run: AgentRun): Promise<AgentRun> {
   return withContext({ channel: run.channel, runId: run.id, actor: `agent:${def.id}` }, async () => {
     const stepId = `run:${run.id}`;
-    const engine = run.mode === "claude" ? modelLabel(resolveModel(def.model, FEATURE_DEFAULTS.agent.role)) : "simulated (AI mock mode)";
+    // A scripted run with AI live is code standing in for a model that couldn't run, not a mock.
+    const engine = run.mode === "claude" ? modelLabel(resolveModel(def.model, FEATURE_DEFAULTS.agent.role)) : isAiLive() ? "run by code: the AI model couldn't" : "simulated (AI mock mode)";
     timeline.emit({ kind: "run", status: "running", stepId, title: `${def.name} started`, subtitle: engine, detail: input.goal });
     const guard = new Guard({ paypal: getPayPal(), policy: def.policy });
     try {

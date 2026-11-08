@@ -3,7 +3,8 @@
  * subagent gave through the sealed prompt, so their quotes and scores are realistic. Borderline has
  * three: two real, and a third built from the first with q2b dropped to partial, so the median
  * lands on 69 and shows the human-review band.
- * Anything typed by hand scores partial on every answered item, which is a failing grade.
+ * Anything typed by hand scores partial on every answered item, which is a failing grade, each line
+ * quoting a different phrase of the answer.
  */
 import { assertNoMockOutage } from "@/lib/ai/mock-outage";
 import { rubric } from "@/lib/course/content";
@@ -14,10 +15,17 @@ import type { Answers } from "./frozen/score-items";
 
 const RECORDED = verdicts as Record<string, ChecklistGrade[]>;
 
+/** The answer's own phrases, so each rubric line can quote a different part of it, word for word. */
+const phrasesOf = (answer: string) => {
+  const parts = answer.split(/[.,;!?]\s+|[.!?]$/).map((p) => p.trim()).filter((p) => p.length > 3);
+  return parts.length ? parts.map((p) => p.slice(0, 60)) : [answer.slice(0, 60)];
+};
+
 function typedByHand(answers: Answers): ChecklistGrade {
   const items = rubric.questions.flatMap((q) => {
     const answer = (answers[q.id] ?? "").trim();
-    return q.items.map((item) => ({ id: item.id, verdict: answer ? ("partial" as const) : ("not_met" as const), quote: answer.slice(0, 60) }));
+    const phrases = phrasesOf(answer);
+    return q.items.map((item, i) => ({ id: item.id, verdict: answer ? ("partial" as const) : ("not_met" as const), quote: answer ? phrases[i % phrases.length] : "" }));
   });
   const caps = rubric.questions.flatMap((q) => q.caps.map((cap) => ({ id: cap.id, triggered: false, quote: "" })));
   return { items, caps, injection_attempted: false, injection_quote: "" };
