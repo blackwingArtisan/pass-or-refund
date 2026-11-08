@@ -3,6 +3,7 @@ import { getBudget, isAiLive } from "@/lib/ai";
 import { AI_MODELS, modelLabel } from "@/lib/ai/config";
 import { DEFAULT_POLICY } from "@/lib/agent/policy";
 import { getEnv } from "@/lib/env";
+import { rubricOnSale } from "@/lib/course/rubric-lock";
 import { route } from "@/lib/http";
 import { getBrowserClientId } from "@/lib/paypal";
 
@@ -15,5 +16,6 @@ export const GET = route(async () => {
     paypal: { mode: env.paypalMode, clientId: getBrowserClientId() ?? null, buyerEmail: env.paypalMode === "mock" ? env.sandboxBuyerEmail : "", webhookConfigured: Boolean(env.paypalWebhookId), testCard: env.paypalMode === "sandbox" && env.demoTestCard },
     ai: { mode: isAiLive() ? "live" : "mock", models: { default: modelLabel(AI_MODELS.default), smart: modelLabel(AI_MODELS.smart) }, budget: getBudget().status() },
     policy: { ...DEFAULT_POLICY, ...appConfig.agentPolicy },
+    rubric: rubricOnSale(),
   };
 });

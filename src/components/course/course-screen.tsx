@@ -12,6 +12,7 @@ import { course, COURSE_PRICE_CENTS, lessons, rubric } from "@/lib/course/conten
 import { formatCents } from "@/lib/course/policy";
 import type { EnrollmentView } from "@/lib/course/types";
 import { Guarantee } from "./guarantee";
+import { RubricOnSale } from "./rubric-receipt";
 
 /** Stops the checkout quietly: this learner paid already, so they're on their way to the course. */
 class AlreadyPaid extends Error {}
@@ -83,6 +84,7 @@ export function CourseScreen() {
           <CardHeader title={formatCents(COURSE_PRICE_CENTS)} description="One payment, taken by PayPal when you buy." />
           <CardBody className="space-y-4">
             <Guarantee />
+            <RubricOnSale />
             <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
               <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
             </Field>
