@@ -127,6 +127,7 @@ async function approveOnTeam(page: Page, id: string) {
   const team = page.getByTestId(`enrollment-${id}`);
   await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
   await expectAgentSummary(team);
+  await noMockWhenLive(page);
   // The mock agent's words. A real agent words its reasons its own way.
   if (!LIVE_AI) await expect(team.getByTestId("approval-reasons")).toContainText("first refund");
   await expect(team).toContainText("Every refund needs a person's approval.");
@@ -134,6 +135,14 @@ async function approveOnTeam(page: Page, id: string) {
   await team.getByTestId("approve-button").click();
   await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
   return team;
+}
+
+/** With AI live, nothing on the page says mock or asks for an API key. */
+async function noMockWhenLive(page: Page) {
+  if (!LIVE_AI) return;
+  const text = await page.locator("body").innerText();
+  expect(text, "a mock label on the live path").not.toMatch(/\bmock\b/i);
+  expect(text).not.toContain("ANTHROPIC_API_KEY");
 }
 
 /** The approval card leads with the refund agent's own summary for the person deciding. */
@@ -512,6 +521,7 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("capture-status")).toHaveText(sandboxRefund!.captureStatus!);
     await expect(page.getByTestId("refund-amount")).toHaveText(`$${PRICE}`);
     await page.screenshot({ path: "screenshots/refund-issued.png" });
+    await noMockWhenLive(page);
 
     const { refund } = await enrollmentOf(request, id);
     await expect(page.getByTestId("refund-id")).toHaveText(refund!.refundId!);

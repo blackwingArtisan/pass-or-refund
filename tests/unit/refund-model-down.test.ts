@@ -10,6 +10,8 @@ import type { GradeRun } from "@/lib/course/types";
 import type { GradeOnce } from "@/lib/grading/grade";
 import { resetEnvCache } from "@/lib/env";
 import { getMockPayPal } from "@/lib/paypal";
+import { timeline } from "@/lib/events/bus";
+import { mockGrade } from "@/lib/grading/mock";
 import { resetSingletons } from "@/lib/singleton";
 import { readyForNextAttempt } from "./course-helpers";
 
@@ -88,6 +90,16 @@ describe("the refund agent on the real Claude path", () => {
     getApprovals().decide(approval.id, "denied", "test", "Done");
   });
 
+  it("says code ran the fallback, not a mock, when AI is live", async () => {
+    anthropicAnswers(401, "authentication_error", "invalid x-api-key");
+    const id = await dueRefund();
+    const approval = await approvalOf(id);
+    const runs = timeline.history({ channels: [CHANNEL] }).filter((e) => e.kind === "run");
+    expect(runs.some((e) => e.subtitle === "run by code: the AI model couldn't")).toBe(true);
+    expect(JSON.stringify(runs)).not.toMatch(/mock/i);
+    getApprovals().decide(approval.id, "denied", "test", "Done");
+  });
+
   it("proposes a contested case straight to a person when the model is out, with notes code wrote", async () => {
     anthropicAnswers(529, "overloaded_error", "Overloaded");
     const id = await dueRefund(true);
@@ -99,5 +111,15 @@ describe("the refund agent on the real Claude path", () => {
     expect(refund?.proposal?.teamSummary).toMatch(/contested/);
     expect(refund?.proposal?.learnerNote).toMatch(/^Sorry/);
     getApprovals().decide(approval.id, "denied", "test", "Done");
+  });
+});
+
+describe("the recorded grade for an answer typed by hand", () => {
+  it("quotes a different phrase of the answer on each line, word for word", () => {
+    const answer = "Honing sharpens the knife. Her brother is right, she should hone it for longer every Sunday.";
+    const grade = mockGrade({ q1: answer, q2: "", q3: "", q4: "" }, 0);
+    const q1 = grade.items.filter((item) => item.id.startsWith("q1"));
+    for (const item of q1) expect(answer).toContain(item.quote);
+    expect(new Set(q1.map((item) => item.quote)).size).toBeGreaterThan(1);
   });
 });
