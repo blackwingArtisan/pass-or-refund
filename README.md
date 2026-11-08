@@ -4,6 +4,17 @@
 
 **Live demo:** https://pass-or-refund.onrender.com · **Video (3 min or less):** not recorded yet · **License:** MIT
 
+## Why this matters
+
+**A coding school advertised job placement of up to 86%. A US regulator found it was closer to half** ([CFPB on BloomTech, 17 Apr 2024](https://www.consumerfinance.gov/about-us/newsroom/cfpb-takes-action-against-coding-boot-camp-bloomtech-and-ceo-austen-allred-for-deceiving-students-and-hiding-loan-costs/)). Course promises are hard to check before you pay. BloomTech promised jobs, not a refund, but course buyers describe the same gap with guarantees:
+
+- **The seller is the only judge.** A $5,997 course buyer asked for the guaranteed refund: "it was quickly DENIED" ([Trustpilot, Sep 2026](https://www.trustpilot.com/review/replaceyouruniversity.com)). Here the refund rule is code, and every point quotes the learner's own answer.
+- **Refund requests stall.** "The refund process turned into an 11-month ordeal", under a policy that read "no questions asked" ([Trustpilot, Nov 2025](https://ca.trustpilot.com/review/pappsmastery.com)). Here two fails put the refund in front of a person, PayPal pays it, and the learner sees the refund id.
+- **Terms move after you pay.** A $199 course launched with no refund policy, and a 14-day window appeared about four weeks later ([The Register, Sep 2019](https://www.theregister.com/2019/09/27/youtube_ai_star)). Here the rubric's version and fingerprint lock at purchase.
+- **Good creators can't prove it.** A creator with a handful of refunds against hundreds of buyers offers them because "I don't wanna be called a scam" ([Chaotic Creator, Mar 2026](https://chaotic-creator.beehiiv.com/p/course-creation-mistakes-that-cost-me-20k)). Here `/cohort` shows pass rates, refunds and the rubric lines learners miss.
+
+The buyer accounts are single reviews: they show the pattern recurs, not how often. Refund-if-you-fail already exists in exam prep (Becker, BarMax). What's new here is the trigger, the course's own public rubric, and a PayPal refund that a person approves.
+
 ## Who it's for
 
 Course creators who sell a skill course they know works, to buyers who've been burned by small-print guarantees. The landing page puts the creator's case first: the knobs (price $49, pass mark 70, two fails 24 hours apart), the refund rate on a sample cohort, what one AI grade costs, what a sale is worth after refunds and grading, and the six rules that stop a learner taking the course and failing on purpose.
@@ -20,7 +31,7 @@ People don't trust online courses, because a guarantee usually means small print
 - **The terms can't move after you pay.** The course page shows the rubric version and its fingerprint (the first 12 characters of the rubric's SHA-256). Buying locks both on your enrollment, your receipt and certificate show them, and grading uses that locked version. If the text on file no longer matched the fingerprint, grading would stop and count nothing (`src/lib/course/rubric-lock.ts`).
 - **Contest one line, once.** After a failed first attempt and before the retake, you can contest one rubric line you lost points on and say why. A person on `/team` reads your case beside the grader's quote and rules. Upheld, the line counts as met and the sealed scoring code adds the attempt up again, which can turn it into a pass. Not upheld, the grade stands and you read their note. Taking the retake first withdraws the contest.
 - **See how learners did before you buy.** The home page shows the pass and refund rates from `/cohort`.
-- **Pass:** you get a certificate, and no refund happens.
+- **Pass:** you get a certificate, and no refund happens. To see one without passing, the home page links to a made-up sample learner's certificate (`/learn/sample_pass`), labelled as a sample.
 - **Fail once:** you tick off the study list item by item, and your next attempt opens 24 hours later. Judges can press **Skip the wait (demo)** to fail twice right away.
 - **Fail twice:** a refund agent checks the policy, proposes the refund with its reasons, and stops. After a person on the course team approves, PayPal pays it and you see "Refund issued, sorry we let you down", with the refund id and status read back from PayPal.
 - **A person declines:** no money moves, and you read the decision and their note on your page.

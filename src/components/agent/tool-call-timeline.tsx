@@ -109,6 +109,12 @@ function Details({ step }: { step: TimelineStep }) {
   );
 }
 
+/** "PAYMENT.CAPTURE.COMPLETED" may break after each dot, so a webhook name wraps at a word, not mid-word. */
+export function wrapAtDots(text: string): ReactNode {
+  const parts = text.split(/(?<=\.)(?=\S)/);
+  return parts.length < 2 ? text : parts.map((part, i) => (i === 0 ? part : [<wbr key={i} />, part]));
+}
+
 function CompactRow({ step }: { step: TimelineStep }) {
   const Icon = KIND_ICON[step.kind] ?? CircleDot;
   return (
@@ -117,7 +123,7 @@ function CompactRow({ step }: { step: TimelineStep }) {
         {step.status === "running" ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
       </span>
       <span className="truncate">
-        <span className="font-medium text-zinc-600">{step.title}</span>
+        <span className="font-medium text-zinc-600">{wrapAtDots(step.title)}</span>
         {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{step.detail.slice(0, 140)}</span> : null}
       </span>
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
@@ -147,7 +153,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className={cn("font-semibold text-zinc-900 [overflow-wrap:anywhere]", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{step.title}</p>
+              <p data-testid="step-title" className={cn("font-semibold text-zinc-900 [overflow-wrap:break-word]", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{wrapAtDots(step.title)}</p>
               {status.label ? (
                 <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", status.className)}>
                   {status.icon}

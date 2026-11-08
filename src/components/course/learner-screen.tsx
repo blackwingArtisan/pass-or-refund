@@ -14,6 +14,7 @@ import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Te
 import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
 import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
+import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
@@ -337,6 +338,11 @@ export function LearnerScreen({ id }: { id: string }) {
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
+          {enrollment.id === SAMPLE_PASS_ID ? (
+            <Notice tone="info" icon={<Award className="size-4" />} testId="sample-pass">
+              <strong>Sample learner.</strong> {enrollment.learnerName} is made up, so you can see what passing looks like without passing yourself. Her answers are the course&rsquo;s strong sample answers, graded with recorded verdicts and added up by the same code. No PayPal payment was made.
+            </Notice>
+          ) : null}
           {enrollment.status === "unpaid" ? (
             <Notice tone="info" icon={<Clock className="size-4" />} testId="purchase-unfinished">
               <strong>This purchase didn&rsquo;t finish.</strong> PayPal hasn&rsquo;t taken any money. <Link href="/course" className="font-medium text-brand underline">Back to the course</Link> to try again with the same email.

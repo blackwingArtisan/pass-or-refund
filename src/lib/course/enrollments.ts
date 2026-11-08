@@ -10,6 +10,7 @@ import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
 import { lockRubric } from "./rubric-lock";
 import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
+import { isSampleId } from "./sample-ids";
 import type { Enrollment, EnrollmentStatus, EnrollmentView, GuaranteeDecision, PendingApproval } from "./types";
 
 const enrollments = () => collection<Enrollment>("enrollments");
@@ -33,6 +34,8 @@ export function createEnrollment(learnerName: string, learnerEmail: string, opts
     rubric: lockRubric(),
   });
 }
+
+export const enrollmentIfAny = (id: string): Enrollment | undefined => enrollments().get(id);
 
 export function requireEnrollment(id: string): Enrollment {
   const enrollment = enrollments().get(id);
@@ -147,7 +150,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
 export function listEnrollments(opts: { includeTestRuns?: boolean } = {}): EnrollmentView[] {
   return enrollments()
     .list()
-    .filter((e) => e.status !== "unpaid" && (opts.includeTestRuns || !e.testRun))
+    .filter((e) => e.status !== "unpaid" && !isSampleId(e.id) && (opts.includeTestRuns || !e.testRun))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(viewEnrollment);
 }

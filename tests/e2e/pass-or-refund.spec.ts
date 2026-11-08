@@ -204,6 +204,54 @@ test.describe("who sees what", () => {
   });
 });
 
+test.describe("the story on the first screen", () => {
+  test("the home page leads with the researched headline and sourced pain points, and links a sample certificate", async ({ page, request }) => {
+    await page.goto("/");
+    const story = page.getByTestId("story");
+    await expect(page.getByTestId("story-headline")).toContainText("up to 86%");
+    await expect(page.getByTestId("story-source")).toHaveAttribute("href", /consumerfinance\.gov/);
+    await expect(story).toContainText("Course promises are hard to check");
+    await expect(page.locator("body")).not.toContainText(/guarantees get broken/i);
+    const pains = page.getByTestId("story-pains").locator("li");
+    await expect(pains).toHaveCount(4);
+    for (const pain of await pains.all()) await expect(pain.locator("a[href^='https://']")).toHaveCount(1);
+    // The story sits above the fold on a laptop screen.
+    const box = await page.getByTestId("story-headline").boundingBox();
+    expect(box!.y + box!.height).toBeLessThan(900);
+    await page.screenshot({ path: "screenshots/landing-story.png" });
+
+    await page.getByTestId("sample-pass-link").click();
+    await page.waitForURL(/\/learn\/sample_pass/);
+    await expect(page.getByTestId("sample-pass")).toContainText("Sample learner");
+    await expect(page.getByTestId("certificate")).toContainText("Mara Lind");
+    const sample = (await (await request.get("/api/enrollments/sample_pass")).json()) as EnrollmentView;
+    expect(sample).toMatchObject({ status: "passed" });
+    expect(sample.payment).toBeUndefined();
+    await page.getByTestId("certificate").screenshot({ path: "screenshots/sample-certificate.png" });
+  });
+
+  test("the brand font is on every screen, and webhook names wrap at their dots", async ({ page, request }) => {
+    const id = await buy(page, request, "Fern Font");
+    for (const path of ["/", "/course", `/learn/${id}`, "/learn/sample_pass", "/team", "/cohort", "/activity"]) {
+      await page.goto(path);
+      const font = await page.evaluate(async () => {
+        await document.fonts.ready;
+        const loaded = [...document.fonts].some((f) => /geist/i.test(f.family) && f.status === "loaded");
+        return { loaded, family: getComputedStyle(document.body).fontFamily, heading: getComputedStyle(document.querySelector("h1, h2") ?? document.body).fontFamily };
+      });
+      expect(`${path} ${font.loaded}`).toBe(`${path} true`);
+      expect(font.family).toMatch(/geist/i);
+      expect(font.heading).toMatch(/geist/i);
+    }
+    if ((await mode(request)) === "mock") {
+      await page.goto(`/learn/${id}`);
+      const webhook = page.getByTestId("step-title").filter({ hasText: "PAYMENT.CAPTURE.COMPLETED" }).first();
+      await expect(webhook).toBeVisible({ timeout: 20_000 });
+      expect(await webhook.innerHTML()).toContain("PAYMENT.<wbr>CAPTURE.<wbr>COMPLETED");
+    }
+  });
+});
+
 test.describe("mock-safe flows", () => {
   // On real AI (the hosted suite), only flows tagged @live run: those that make no AI call, and a
   // few that read their scores from the page instead of the mock's fixed ones. About 20 AI calls in all.
