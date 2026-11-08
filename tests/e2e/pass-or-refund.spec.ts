@@ -164,6 +164,7 @@ test.describe("who sees what", () => {
     }
     expect((await stranger.request.post("/api/agent/approvals/ap_nope", { data: { decision: "approved" } })).status()).toBe(401);
     expect((await stranger.request.post(`/api/enrollments/${id}/settle`, { data: { outcome: "pass", note: "x", checkedItems: [] } })).status()).toBe(401);
+    expect((await stranger.request.post(`/api/enrollments/${id}/contest/ruling`, { data: { upheld: true, note: "x" } })).status()).toBe(401);
     for (const path of ["/team", "/activity"]) {
       await visitor.goto(path);
       await expect(visitor.getByTestId("team-passcode-form")).toBeVisible();
