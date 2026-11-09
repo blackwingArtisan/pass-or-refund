@@ -1028,6 +1028,59 @@ test.describe("mock-safe flows", () => {
     expect(guarantee.due).toBe(false);
   });
 
+  test("a buyer verifies their purchase on /verify: PayPal's order read back matches the public rubric, by order id or invoice id", { tag: "@live" }, async ({ page, request }) => {
+    const id = await buy(page, request, "Val Verify");
+    const { payment } = await enrollmentOf(request, id);
+    const orderId = payment!.orderId;
+    // Next streams the result in; while it swaps in, a hidden copy sits outside the page's main area.
+    const v = (testId: string) => page.getByRole("main").getByTestId(testId);
+    await v("verify-on-paypal").click();
+    await page.waitForURL(new RegExp(`/verify\\?q=${orderId}`));
+    const result = v("verify-result");
+    await expect(result).toHaveAttribute("data-status", "match");
+    await expect(v("verify-verdict")).toHaveText("Matches");
+    await expect(v("verify-call")).toHaveText(`GET /v2/checkout/orders/${orderId}`);
+    await expect(v("verify-order-status")).toHaveText("COMPLETED");
+    await expect(v("verify-paypal-guarantee")).toContainText("Full refund if you fail the public final check twice.");
+    const fingerprint = (await v("verify-paypal-rubric").locator("code").innerText()).trim();
+    await expect(v("verify-public-rubric").locator("code")).toHaveText(fingerprint);
+    const invoiceId = (await v("verify-paypal-invoice").innerText()).trim();
+    expect(invoiceId).toMatch(new RegExp(`^PR-v1-[0-9a-f]{12}-${id}$`));
+    // Nothing about the learner: not their name, not their answers. (The learner page the buyer came
+    // from stays in the DOM, hidden, for the back button, so read what the server sends for /verify.)
+    await expect(result).not.toContainText("Val Verify");
+    const served = await (await page.request.get(`/verify?q=${orderId}`)).text();
+    expect(served).toContain(invoiceId);
+    expect(served).not.toContain("Val Verify");
+    await page.screenshot({ path: "screenshots/verify-match.png", fullPage: true });
+
+    // The invoice id from PayPal's email works the same way, typed into the form.
+    await page.goto("/verify");
+    await v("verify-input").fill(invoiceId);
+    await v("verify-submit").click();
+    await expect(v("verify-result")).toHaveAttribute("data-status", "match");
+    await expect(v("verify-call")).toHaveText(`GET /v2/checkout/orders/${orderId}`);
+    // A fingerprint that isn't the one on PayPal's order doesn't match; junk is refused without a PayPal call.
+    await page.goto(`/verify?q=${invoiceId.replace(/-v1-[0-9a-f]{12}-/, "-v1-000000000000-")}`);
+    await expect(v("verify-result")).toHaveAttribute("data-status", "no-match");
+    await page.goto("/verify?q=hello");
+    await expect(v("verify-result")).toHaveAttribute("data-status", "unrecognised");
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(orderId, payment!.captureId!);
+      console.log("PayPal re-read:", JSON.stringify({ verify: [paypal.order.id, paypal.order.status, paypal.order.purchase_units[0].invoice_id] }));
+      expect(paypal.order.purchase_units[0].invoice_id).toBe(invoiceId);
+    }
+  });
+
+  test("/verify is linked from the landing and the public rubric, and its form only reads", { tag: "@live" }, async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("landing-verify-link")).toHaveAttribute("href", /^\/verify\?q=[A-Z0-9]{17}$/);
+    await page.goto("/rubric");
+    await page.getByTestId("rubric-verify-link").click();
+    await expect(page).toHaveURL(/\/verify$/);
+    await expect(page.getByTestId("verify-form")).toHaveAttribute("method", "get");
+  });
+
   test("a buyer checks the receipt's rubric fingerprint against the public rubric: matches, or changed since they bought", { tag: "@live" }, async ({ page, request }) => {
     await page.goto("/course");
     await page.getByTestId("read-rubric").first().click();

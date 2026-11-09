@@ -114,7 +114,11 @@ export default function RubricPage({ searchParams }: { searchParams: Search }) {
             <Link href={`/api/rubric/v${version}.json`} className="underline" data-testid="rubric-download">
               this file
             </Link>{" "}
-            (<code>shasum -a 256 rubric-v{version}.json</code>).
+            (<code>shasum -a 256 rubric-v{version}.json</code>). Bought already?{" "}
+            <Link href="/verify" className="underline" data-testid="rubric-verify-link">
+              Verify your order on PayPal
+            </Link>
+            .
           </p>
         </CardBody>
       </Card>

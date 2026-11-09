@@ -389,7 +389,12 @@ export function LearnerScreen({ id }: { id: string }) {
         description={
           enrollment.payment?.capturedCents === undefined ? undefined : (
             <span data-testid="receipt" className="flex flex-col gap-1">
-              <span>{`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`}</span>
+              <span>
+                {`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}. `}
+                <Link href={`/verify?q=${encodeURIComponent(enrollment.payment.orderId)}`} className="font-medium text-brand underline" data-testid="verify-on-paypal">
+                  Verify it on PayPal
+                </Link>
+              </span>
               <RubricTerms lock={enrollment.rubric} checkHref={shown.checkHref} enrollmentId={enrollment.id} className="text-sm" />
             </span>
           )
