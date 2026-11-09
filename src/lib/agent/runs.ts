@@ -10,6 +10,7 @@ import { getPayPal } from "../paypal";
 import { singleton } from "../singleton";
 import type { AgentDefinition, AgentInput } from "./define";
 import { Guard } from "./guard";
+import { getDailyMoneyCounter, type MoneyScope } from "./policy";
 import { runClaudeAgent } from "./loop";
 import { runScriptedAgent } from "./scripted";
 
@@ -20,6 +21,8 @@ export interface AgentRun {
   channel: string;
   goal: string;
   mode: "claude" | "scripted";
+  /** Which daily money count the Guard checks this run against. */
+  moneyScope?: MoneyScope;
   status: "running" | "completed" | "failed";
   startedAt: string;
   finishedAt?: string;
@@ -39,7 +42,7 @@ export function listRuns(channel?: string): AgentRun[] {
 }
 
 /** Registers a run without starting it. Pair with runAgentToCompletion() when code awaits the end of the run. */
-export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string; mode?: AgentRun["mode"] }): AgentRun {
+export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string; mode?: AgentRun["mode"]; moneyScope?: MoneyScope }): AgentRun {
   const run: AgentRun = {
     id: `run_${randomUUID().slice(0, 12)}`,
     agentId: def.id,
@@ -47,6 +50,7 @@ export function createAgentRun(def: AgentDefinition, input: AgentInput, opts: { 
     channel: opts.channel,
     goal: input.goal,
     mode: opts.mode ?? (isAiLive() ? "claude" : def.mockScript ? "scripted" : "claude"),
+    ...(opts.moneyScope && opts.moneyScope !== "live" ? { moneyScope: opts.moneyScope } : {}),
     status: "running",
     startedAt: new Date().toISOString(),
     costUsd: 0,
@@ -68,7 +72,7 @@ export async function runAgentToCompletion(def: AgentDefinition, input: AgentInp
     // A scripted run with AI live is code standing in for a model that couldn't run, not a mock.
     const engine = run.mode === "claude" ? modelLabel(resolveModel(def.model, FEATURE_DEFAULTS.agent.role)) : isAiLive() ? "run by code: the AI model couldn't" : "simulated (AI mock mode)";
     timeline.emit({ kind: "run", status: "running", stepId, title: `${def.name} started`, subtitle: engine, detail: input.goal });
-    const guard = new Guard({ paypal: getPayPal(), policy: def.policy });
+    const guard = new Guard({ paypal: getPayPal(), policy: def.policy, daily: getDailyMoneyCounter(run.moneyScope) });
     try {
       let result;
       if (run.mode === "claude") {

@@ -6,7 +6,10 @@
  * state the learner can read.
  */
 import { REFUND_AGENT_GOAL, refundAgentFor, refundWithoutAiFor } from "@/agents/refund-agent";
+import { REFUND_COURSE_PURCHASE } from "@/agents/tools/refund-course-purchase";
 import { getApprovals } from "@/lib/agent/approvals";
+import { getAuditLog } from "@/lib/agent/audit";
+import type { MoneyScope } from "@/lib/agent/policy";
 import type { AgentDefinition } from "@/lib/agent/define";
 import { createAgentRun, runAgentToCompletion, type AgentRun } from "@/lib/agent/runs";
 import { HttpError } from "@/lib/http";
@@ -15,6 +18,26 @@ import { activeRefunds, guaranteeFor, recoverRefund, requireEnrollment, saveEnro
 import type { Enrollment } from "./types";
 
 const REOPENABLE = ["refund_declined", "refund_blocked"];
+
+/** Test-suite refunds count against their own daily limit, so test traffic can't block a learner's refund. */
+const moneyScopeOf = (enrollment: Pick<Enrollment, "testRun">): MoneyScope => (enrollment.testRun ? "test" : "live");
+
+/** The Guard turned the refund down before it reached a person, and why, in its own words. */
+function guardRefusal(runId: string): string | undefined {
+  const denied = getAuditLog()
+    .list({ runId, tool: REFUND_COURSE_PURCHASE })
+    .filter((e) => e.action === "tool.denied")
+    .at(-1);
+  return denied?.reason;
+}
+
+/** What the learner and the course team read when the Guard stopped a proposal. */
+function plainRefusal(reason: string): string {
+  const [code, ...rest] = reason.split(": ");
+  const detail = rest.join(": ");
+  if (code === "OVER_DAILY_CAP") return `No money moved. The refund didn't reach a person because today's limit on refunds the agent can propose is used up: ${detail} The course team can send it again from the course team page, and it will go through once the limit allows.`;
+  return `No money moved. The Guard stopped the refund before it reached a person: ${detail || reason}`;
+}
 
 function block(id: string, error: string, overdueSince?: string) {
   const enrollment = requireEnrollment(id);
@@ -31,15 +54,20 @@ function finish(id: string, run: AgentRun) {
   } else if (approval?.state === "expired") {
     block(id, "Nobody on the course team decided in time.", approval.expiresAt);
   } else {
-    block(id, enrollment.refund?.error ?? run.error ?? "The refund agent stopped without proposing a refund.");
+    const refused = guardRefusal(run.id);
+    block(id, enrollment.refund?.error ?? (refused ? plainRefusal(refused) : undefined) ?? run.error ?? "The refund agent stopped without proposing a refund.");
   }
 }
 
-/** The run ended and the refund tool was never asked: the model failed or wandered off. A refused ask doesn't count. */
+/**
+ * The run ended and the refund tool was never asked: the model failed or wandered off. A refused
+ * ask doesn't count, whether the tool refused it or the Guard did: code proposing the same refund
+ * would be refused the same way.
+ */
 function neverProposed(id: string, run: AgentRun): boolean {
   const { status, refund } = requireEnrollment(id);
   if (status !== "refund_pending" || refund?.error) return false;
-  return getApprovals().list({ runId: run.id }).length === 0;
+  return getApprovals().list({ runId: run.id }).length === 0 && !guardRefusal(run.id);
 }
 
 const whyNoAi = (run: AgentRun) => (/credit|budget/i.test(run.error ?? "") ? "The AI credit has run out." : run.error ? "The AI model wasn't available." : "The AI agent stopped without proposing a refund.");
@@ -47,8 +75,8 @@ const whyNoAi = (run: AgentRun) => (/credit|budget/i.test(run.error ?? "") ? "Th
 /** Proposes without the model. The tools still check every rule, and the Guard still waits for a person. */
 function proposeWithoutAi(id: string, failed: AgentRun, channel: string): Promise<AgentRun> {
   const agent = refundWithoutAiFor(requireEnrollment(id));
-  const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel, mode: "scripted" });
   const enrollment = requireEnrollment(id);
+  const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel, mode: "scripted", moneyScope: moneyScopeOf(enrollment) });
   saveEnrollment({ ...enrollment, refund: { ...enrollment.refund!, runId: run.id, proposedWithoutAi: whyNoAi(failed) } });
   return runAgentToCompletion(agent, REFUND_AGENT_GOAL, run);
 }
@@ -58,7 +86,7 @@ export function requestRefund(enrollment: Enrollment, channel: string, agent: Ag
   if (activeRefunds().has(enrollment.id)) throw new HttpError(409, "This refund is already waiting for approval.", "conflict");
   if (!guaranteeFor(enrollment).due) throw new HttpError(409, "The guarantee doesn't cover this enrollment.", "conflict");
   if (!enrollment.payment?.captureId) throw new HttpError(409, "This enrollment has no payment to refund.", "conflict");
-  const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel });
+  const run = createAgentRun(agent, REFUND_AGENT_GOAL, { channel, moneyScope: moneyScopeOf(enrollment) });
   // A person's review stays on the record, so the agent knows it can't send the case back to them.
   const saved = saveEnrollment({ ...enrollment, status: "refund_pending", refund: { runId: run.id, requestedAt: run.startedAt, review: enrollment.refund?.review } });
   activeRefunds().add(enrollment.id);

@@ -3,6 +3,7 @@ import { appConfig } from "@/app.config";
 import { captureCoursePayment } from "@/agents/tools/capture-course-payment";
 import { runTool } from "@/lib/agent/execute";
 import { Guard } from "@/lib/agent/guard";
+import { getDailyMoneyCounter } from "@/lib/agent/policy";
 import { withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
@@ -124,7 +125,8 @@ async function capturePurchase(id: string, orderId: string, channel: string): Pr
   const recovered = await paidAtPayPal(enrollment);
   if (recovered.status !== "unpaid") return recovered;
 
-  const guard = new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy });
+  // A learner's payment counts against its own daily count, never against what can be refunded.
+  const guard = new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy, daily: getDailyMoneyCounter(enrollment.testRun ? "payments-test" : "payments") });
   const result = await runTool(captureCoursePayment, { order_id: orderId, idempotency_key: `capture-${id}` }, { runId: `purchase_${id}`, actor: "learner", channel, guard });
   if (result.isError) {
     const outcome = result.outcome;

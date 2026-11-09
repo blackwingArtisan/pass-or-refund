@@ -96,6 +96,16 @@ export class DailyMoneyCounter {
   }
 }
 
-export function getDailyMoneyCounter(): DailyMoneyCounter {
-  return singleton("agent:daily-money", () => new DailyMoneyCounter(dataPath("agent-spend.json")));
+/**
+ * Each scope has its own daily count against the same cap. "live" is money the agents send out for
+ * real learners. "payments" is learners' own payments coming in, which never use up what can be
+ * refunded. The "-test" scopes are browser test suites, so a day of test runs on a shared deploy
+ * can't use up a real learner's limit.
+ */
+export type MoneyScope = "live" | "test" | "payments" | "payments-test";
+
+export function getDailyMoneyCounter(scope: MoneyScope = "live"): DailyMoneyCounter {
+  return scope === "live"
+    ? singleton("agent:daily-money", () => new DailyMoneyCounter(dataPath("agent-spend.json")))
+    : singleton(`agent:daily-money:${scope}`, () => new DailyMoneyCounter(dataPath(`agent-spend-${scope}.json`)));
 }
