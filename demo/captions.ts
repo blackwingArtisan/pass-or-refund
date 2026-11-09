@@ -11,13 +11,32 @@ import type { Locator, Page } from "@playwright/test";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Height of the caption band. Pages get this much room at the bottom, so a caption never covers what it describes. */
-const BAND_PX = 112;
+export const BAND_PX = 112;
+const CAPTION_FONT = "600 26px/1.3 var(--font-sans, system-ui, -apple-system, sans-serif)";
+/** The band's side padding: a caption is at most the frame's width less twice this. */
+const CAPTION_PAD_PX = 48;
 
-/** Bottom caption band, full width. Waits `ms` (reading time) unless wait=false. */
-export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean } = {}) {
+/** How wide a caption's text is on this page, in CSS pixels (one line, or the band's full width once it wraps). */
+export async function captionWidth(page: Page, text: string): Promise<number> {
+  return page.evaluate(
+    ({ text, font, pad }) => {
+      const probe = document.createElement("span");
+      Object.assign(probe.style, { font, position: "fixed", left: "-9999px", top: "0", whiteSpace: "nowrap", visibility: "hidden" });
+      probe.textContent = text;
+      document.body.appendChild(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return Math.min(width, window.innerWidth - 2 * pad);
+    },
+    { text, font: CAPTION_FONT, pad: CAPTION_PAD_PX },
+  );
+}
+
+/** Caption band, full width, at the bottom (or the top, for a shot whose subject sits low). Waits `ms` (reading time) unless wait=false. */
+export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; top?: boolean } = {}) {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   await page.evaluate(
-    ({ text, ms, band }) => {
+    ({ text, ms, band, top, font, pad }) => {
       let el = document.getElementById("__demo_caption");
       if (!el) {
         const room = document.createElement("style");
@@ -26,13 +45,14 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         el = document.createElement("div");
         el.id = "__demo_caption";
         Object.assign(el.style, {
-          position: "fixed", left: "0", right: "0", bottom: "0", height: `${band}px`, zIndex: "2147483647",
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 48px", boxSizing: "border-box",
-          background: "rgba(9,9,11,0.94)", color: "#fff", font: "600 26px/1.3 var(--font-sans, system-ui, -apple-system, sans-serif)",
+          position: "fixed", left: "0", right: "0", height: `${band}px`, zIndex: "2147483647",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: `0 ${pad}px`, boxSizing: "border-box",
+          background: "rgba(9,9,11,0.94)", color: "#fff", font,
           textAlign: "center", opacity: "0", transition: "opacity .3s", pointerEvents: "none",
         });
         document.body.appendChild(el);
       }
+      Object.assign(el.style, top ? { top: "0", bottom: "auto" } : { top: "auto", bottom: "0" });
       el.textContent = text;
       requestAnimationFrame(() => {
         el!.style.opacity = "1";
@@ -42,7 +62,7 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         el!.style.opacity = "0";
       }, ms);
     },
-    { text, ms, band: BAND_PX },
+    { text, ms, band: BAND_PX, top: !!opts.top, font: CAPTION_FONT, pad: CAPTION_PAD_PX },
   );
   if (opts.wait !== false) await sleep(ms);
 }

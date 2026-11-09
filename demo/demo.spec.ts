@@ -1,8 +1,8 @@
 /**
- * DEMO VIDEO (npm run demo:record, then npm run demo:edit). Cut 7: one money spine, about six ideas,
- * 110 to 125 s edited.
- *   1. the pain, narrated from the first frame, 5 s: a real buyer's words from the landing's sourced
- *      "Why it matters" cards ("it was quickly DENIED"), under a slow push in
+ * DEMO VIDEO (npm run demo:record, then npm run demo:edit). Cut 8: one money spine, about six ideas,
+ * 90 to 120 s edited.
+ *   1. who it's for and the promise, 3 to 5 s, over the product from the first frame: "For course
+ *      creators and learners: pass, or get your money back." on the course page
  *   3. the course page: the guarantee is code, its terms beside the pay button
  *   4. PayPal's own window: its cart held on the item line with the rubric fingerprint (the first time
  *      the fingerprint is shown), then the sandbox test card and the pay click
@@ -11,17 +11,20 @@
  *   7. graded: one rubric line, its verdict beside Jordan's quoted words, and the score code added
  *   7b. Jordan contests one line, once; on /team the second reader quotes both sides and recommends,
  *      and a person rules (about 10 s)
- *   8. one short line: retakes open a day later; the demo skips the wait
+ *   8. off camera: the study list and the skipped 24-hour wait (the try-two caption says so)
  *  10. try 2: short again, so the refund is due, and the refund agent's note to Jordan
  *  11. the course team: only a person approves. The click is held on camera until PayPal reports
  *      the refund COMPLETED
  *  12. Jordan's refund card: the amount back, and PayPal's own note on the refund quoting both scores
  *  12c. /verify: the order read back from PayPal carries the same fingerprint (the second time), then
  *      one word of a copy of the rubric changed, and it no longer matches
- *  14. the close, about 6 s: the creator's earnings card on /cohort, every figure read from PayPal.
+ *  14. the close: the creator's earnings card on /cohort, every figure read from PayPal.
  *      Off camera, before the story, a second learner (Sam) buys in the sandbox and passes, so the card
  *      shows a sale the creator keeps beside Jordan's refund, not a $0 net.
- *  15. an end card, about 4 s: the address, and what runs where
+ *  15. an end card, held for its line: the address, and what runs where
+ * The five money beats (PayPal's cart, the score, the approval, the refund note, /verify) are zoomed
+ * so scores, amounts and PayPal's ids read at 1080p; every zoom is the deepest that keeps its target
+ * and the whole caption in frame (the take fails if a caption would be cropped).
  * Every beat also checks the screen never says the refund ran without a person's approval.
  * Left out on purpose: the gaming rules, the injection flag, /rubric's ticks, /creator and the debug_id
  * drawer. They are all still in the app.
@@ -31,7 +34,7 @@
  * round4/scripts/narrate.mjs. It starts at 0 s. Every number in it is read from the screen, each line
  * fits before the next one at 15 characters (and 2.6 words) a second, and every narrated beat is on
  * screen 4 s or more (the take fails otherwise: trim the line, not the shot).
- * videos/demo-voiceover.txt lists the captions at their times. The video is 1280x800 and shows only
+ * videos/demo-voiceover.txt lists the captions at their times. The take is 1280x800, scaled to 1920x1200 by the edit before a zoom crops it, and shows only
  * the learner and creator screens: DEMO_CLEAN (on unless DEMO_CLEAN=0) hides the For judges menu.
  *
  * Modes: the script reads /api/kit/status and words its captions and voiceover to match, so a
@@ -45,23 +48,22 @@ import fs from "node:fs";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { payInPayPalWindow } from "../tests/e2e/paypal-popup";
 import { samples } from "../src/lib/course/samples";
-import { caption, centre, DemoClock, DemoCuts, highlight, titleCard, zoomOn, type Zoom } from "./captions";
+import { BAND_PX, caption, captionWidth, centre, DemoClock, DemoCuts, highlight, titleCard, type Zoom } from "./captions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The edited cut's target, and the hard limit. */
-const EDITED_MIN_SECONDS = 110;
-const EDITED_MAX_SECONDS = 125;
+const EDITED_MIN_SECONDS = 90;
+const EDITED_MAX_SECONDS = 120;
 const EDITED_LIMIT_SECONDS = 150;
-/** The pain line over the landing: about 5 s, never more than this. */
-const LANDING_LIMIT_SECONDS = 8;
-const LANDING_SECONDS = 5;
+/** The opener: who it's for and the promise, over the product, 3 to 5 s. */
+const OPENER_MIN_SECONDS = 3;
+const OPENER_MAX_SECONDS = 5.2;
+const AUDIENCE = "For course creators and learners: pass, or get your money back.";
 /** PayPal's window, spliced in from its own recording: its cart open on the item line, held... */
 const CART_SECONDS = 4;
 /** ...then the filled card form and the pay click. */
 const FORM_SECONDS = 2.5;
 const PAYPAL_CLIP_SECONDS = CART_SECONDS + FORM_SECONDS;
-/** The earnings card that closes the video. */
-const CLOSE_SECONDS = 6;
 /** The end card. */
 const END_CARD_SECONDS = 4.2;
 /** How fast the narrator reads: a voiceover line must fit before the next one at this pace. */
@@ -70,6 +72,8 @@ const CHARS_PER_SECOND = 15;
 /** Every narrated beat stays on screen at least this long. */
 const MIN_BEAT_SECONDS = 4;
 const SIZE = { width: 1280, height: 800 };
+/** The edit's working size: the 1280x800 take is scaled up to it before a zoom crops it, and the cut is delivered at it (YouTube's 1080p class). */
+const VIDEO_SIZE = { width: 1920, height: 1200 };
 const REQUIRE_LIVE = process.env.DEMO_REQUIRE_LIVE === "1";
 /** Words that mark a stand-in screen. The submission take must show none of them. */
 const NOT_LIVE = /\bmock\b|simulated/i;
@@ -175,19 +179,60 @@ async function refundSettled(page: Page) {
 /** Seconds a narrator needs for a line, at WORDS_PER_SECOND or CHARS_PER_SECOND, whichever is slower, rounded up to a tenth. */
 const readSeconds = (text: string) => Math.ceil(Math.max(text.trim().split(/\s+/).length / WORDS_PER_SECOND, text.trim().length / CHARS_PER_SECOND) * 10) / 10;
 
+type Box = { x: number; y: number; width: number; height: number };
+type View = { width: number; height: number };
+
+/** The part of the frame a zoom shows, in page pixels. */
+const shown = (view: View, z: Zoom) => {
+  const w = view.width / z.to;
+  const h = view.height / z.to;
+  return { left: z.ax * (view.width - w), top: z.ay * (view.height - h), w, h };
+};
+
+/** True when the caption band (at the bottom, or the top) and its centred text, `capW` wide, are whole inside the zoom. */
+function captionKept(view: View, z: Zoom, capW: number, top = false): boolean {
+  const s = shown(view, z);
+  const capLeft = (view.width - capW) / 2;
+  const bandIn = top ? s.top <= 0.5 : s.top + s.h >= view.height - 0.5;
+  return bandIn && capLeft >= s.left - 1 && capLeft + capW <= s.left + s.w + 1;
+}
+
 /**
- * A zoom that keeps the caption band in frame: `target` is scrolled to sit just above the band, and
- * the zoom crops only the top of the frame, and the sides evenly when the target fits, so a short
- * caption (55 characters or so) stays whole.
+ * The deepest zoom from `to` down to 1.15 that keeps `box` whole, clear of the caption band, and the
+ * caption whole; undefined if none does. The money beats use it, so scores, amounts and PayPal's ids
+ * read at YouTube size while the caption stays readable.
  */
-async function zoomAbove(page: Page, target: Locator, to: number): Promise<Zoom> {
+function zoomKeeping(view: View, box: Box, capW: number, to: number, top = false): Zoom | undefined {
+  for (let z = to; z >= 1.15 - 1e-9; z -= 0.05) {
+    const w = view.width / z;
+    const h = view.height / z;
+    const ay = top ? 0 : 1;
+    const y0 = ay * (view.height - h);
+    const clearTop = top ? BAND_PX : y0;
+    const clearBottom = top ? h : view.height - BAND_PX;
+    if (box.y < clearTop + 4 || box.y + box.height > clearBottom - 4) continue;
+    const capLeft = (view.width - capW) / 2;
+    const lo = Math.max(0, Math.max(box.x + box.width, capLeft + capW) + 8 - w);
+    const hi = Math.min(view.width - w, Math.min(box.x, capLeft) - 8);
+    if (lo > hi) continue;
+    const left = Math.min(hi, Math.max(lo, box.x + box.width / 2 - w / 2));
+    return { to: Math.round(z * 100) / 100, ax: view.width > w ? left / (view.width - w) : 0.5, ay };
+  }
+  return undefined;
+}
+
+/**
+ * A zoom on `target` with `captionText` under it: the target is scrolled to sit just above the
+ * caption band, and the zoom is as deep as `to` allows with both whole. Logged when none fits.
+ */
+async function zoomAbove(page: Page, target: Locator, to: number, captionText: string): Promise<Zoom | undefined> {
   const view = page.viewportSize() ?? SIZE;
   const firstRow = view.height - view.height / to;
   await target.evaluate((el, top) => window.scrollBy(0, el.getBoundingClientRect().top - top - 12), firstRow);
   const box = await target.boundingBox();
-  const side = (view.width - view.width / to) / 2;
-  const fits = box && box.x >= side && box.x + box.width <= view.width - side;
-  return { ...(await zoomOn(page, target, to)), ay: 1, ...(fits ? { ax: 0.5 } : {}) };
+  const zoom = box ? zoomKeeping(view, box, await captionWidth(page, captionText), to) : undefined;
+  if (!zoom) console.log(`[demo] no zoom keeps both the target and "${captionText}"`);
+  return zoom;
 }
 
 test("demo", async ({ page, request, browser, baseURL }) => {
@@ -222,49 +267,48 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   /** The voiceover: one or two lines a shot, `at` in edited seconds. */
   const voiceover: { shot: number; at: number; text: string }[] = [];
   const at = () => Math.round(cuts.editedExact * 10) / 10;
+  /** The zoom the edit is in now, so every caption said under it is checked to be whole. */
+  let zoomNow: Zoom | undefined;
+  const zoomTo = (z: Zoom | undefined) => {
+    zoomNow = z;
+    cuts.zoom(z);
+  };
+  const unzoom = () => zoomTo(undefined);
   /**
    * One beat: a short caption on screen and a voiceover line, held long enough for the narrator to
    * read the line (and the caption to be read), never less than `ms` or MIN_BEAT_SECONDS.
    */
-  const say = (on: Page, shot: number, captionText: string, vo: string, opts: { ms?: number; wait?: boolean } = {}) => {
+  const say = async (on: Page, shot: number, captionText: string, vo: string, opts: { ms?: number; wait?: boolean } = {}) => {
+    if (zoomNow && on === page) expect(captionKept(SIZE, zoomNow, await captionWidth(on, captionText)), `the zoom crops the caption "${captionText}"`).toBe(true);
     script.push({ at: at(), text: captionText });
     voiceover.push({ shot, at: at(), text: vo });
     const ms = Math.max(opts.ms ?? 0, Math.round((readSeconds(vo) + 0.3) * 1000), MIN_BEAT_SECONDS * 1000);
     return caption(on, captionText, { ...opts, ms });
   };
 
-  // 1. The pain, from the first frame: a real buyer's words, sourced on the landing, under a slow push in
-  await page.goto("/#why");
-  const pain = page.getByTestId("story-pains").locator("li").first();
-  await pain.waitFor();
-  const quoted = await pain.innerText();
-  expect(quoted, "the opener's quote is the landing's own, with its source").toContain("it was quickly DENIED");
-  const landingFrom = cuts.editedExact;
-  cuts.resume();
-  cuts.zoom(await zoomAbove(page, pain, 1.3));
-  const pulse = highlight(page, pain, 2400);
-  await say(page, 1, "A course buyer's refund: “it was quickly DENIED”.", "A course buyer asked for the guaranteed refund. It was quickly denied.", { ms: LANDING_SECONDS * 1000 });
-  await pulse;
-  cuts.pause(0.1);
-  cuts.unzoom();
-  const landingSeconds = cuts.editedExact - landingFrom;
-  await beat("landing");
-
-  // 3. The course page: the guarantee in code, its terms beside the pay button
+  // 1. Who it's for and the promise, over the product from the first frame: the course page and its pay button
   await page.goto("/course");
   await page.getByTestId("guarantee").waitFor();
   await page.getByTestId("learner-name").filter({ visible: true }).fill("Jordan Lee");
   await page.getByTestId("learner-email").filter({ visible: true }).fill(email("Jordan Lee"));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const openerFrom = cuts.editedExact;
+  cuts.resume();
+  await say(page, 1, AUDIENCE, AUDIENCE);
+  const openerSeconds = cuts.editedExact - openerFrom;
+  await beat("opener");
+
+  // 3. The course page: the guarantee in code, its terms beside the pay button
   const guarantee = page.getByTestId("guarantee").filter({ visible: true });
   await centre(guarantee);
-  cuts.resume();
   await highlight(page, guarantee, 900);
-  await say(page, 3, "Fail the final check twice, honestly, and get refunded.", "Pass or Refund makes the guarantee code, its terms beside the pay button.", { ms: 6000 });
+  await say(page, 3, "Fail the final check twice, honestly, and get refunded.", "Pass or Refund makes the guarantee code, its terms beside the pay button.");
   await requireLive(page, "course page");
 
   // 4. PayPal's own window: the cart's item line with the rubric fingerprint, then the test card
   let paypalWindow = sandbox;
   let cartFingerprint: string | undefined;
+  let cartZoom: Zoom | undefined;
   if (sandbox) {
     let openedAt = 0;
     const marks: number[] = [];
@@ -283,8 +327,18 @@ test("demo", async ({ page, request, browser, baseURL }) => {
         const item = p.getByText(/rubric v\d+ · [0-9a-f]{12}/).first();
         await item.waitFor({ timeout: 15_000 });
         cartFingerprint = /[0-9a-f]{12}/.exec(await item.innerText())![0];
+        // Zoomed so the fingerprint reads at YouTube size: the caption goes above or below, wherever the item line leaves room.
+        const cartCaption = `PayPal's cart: rubric fingerprint ${cartFingerprint}.`;
+        const itemBox = await item.boundingBox();
+        const capW = await captionWidth(p, cartCaption);
+        const below = itemBox ? zoomKeeping(SIZE, itemBox, capW, 1.8) : undefined;
+        const above = itemBox && !below ? zoomKeeping(SIZE, itemBox, capW, 1.8, true) : undefined;
+        cartZoom = below ?? above;
+        console.log(`[demo] PayPal's cart item line at y ${Math.round(itemBox?.y ?? -1)}: zoom ${cartZoom ? `${cartZoom.to}x, caption ${above ? "on top" : "below"}` : "none"}`);
         marks.push(since());
-        await say(p, 4, `In PayPal's cart, the item line carries rubric fingerprint ${cartFingerprint}.`, "Jordan pays in PayPal's own window. The cart carries the rubric's fingerprint.", { wait: false, ms: 20_000 });
+        script.push({ at: at(), text: cartCaption });
+        voiceover.push({ shot: 4, at: at(), text: "Jordan pays in PayPal's own window. The cart carries the rubric's fingerprint." });
+        await caption(p, cartCaption, { wait: false, ms: 20_000, top: !!above });
         await sleep(CART_SECONDS * 1000);
         // ...then the sandbox test card, already filled, and the pay click.
         await p.keyboard.press("Escape");
@@ -299,7 +353,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
       paypalWindow = false;
       for (const p of page.context().pages()) if (p !== page) await p.close().catch(() => undefined);
       while (voiceover.at(-1)?.shot === 4) voiceover.pop();
-      while (script.length && script.at(-1)!.text.startsWith("In PayPal's cart")) script.pop();
+      while (script.length && script.at(-1)!.text.startsWith("PayPal's cart")) script.pop();
       await page.goto("/course?test-card=1");
       await page.getByTestId("learner-name").filter({ visible: true }).fill("Jordan Lee");
       await page.getByTestId("learner-email").filter({ visible: true }).fill(email("Jordan Lee"));
@@ -309,7 +363,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     });
     if (paypalWindow && marks.length === 2) {
       // The main video stopped when the window opened, so only the cart, then the filled form and the pay click, go in.
-      cuts.clips("popup", [{ from: marks[0], to: marks[0] + CART_SECONDS }]); // no zoom: it would crop the caption
+      cuts.clips("popup", [{ from: marks[0], to: marks[0] + CART_SECONDS }], cartZoom);
       cuts.clips("popup", [{ from: marks[1], to: marks[1] + FORM_SECONDS }], { to: 1.35, ax: 0.5, ay: 1 });
     } else {
       paypalWindow = false;
@@ -340,16 +394,17 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   for (const q of ["q2", "q3", "q4"]) await typeAnswer(page, q, samples.fail1[q]);
   const answerBox = page.getByTestId("answer-q1");
   await centre(answerBox);
-  const typingZoom = await zoomAbove(page, answerBox, 1.4);
+  const typingCaption = "Jordan answers the final check in their own words.";
+  const typingZoom = await zoomAbove(page, answerBox, 1.4, typingCaption);
   cuts.resume();
-  cuts.zoom(typingZoom);
+  zoomTo(typingZoom);
   const typedFrom = Date.now();
   const typing = `Try one: Jordan answers in their own words, and ${aiLive ? "Claude grades it live" : "it's graded"}.`;
-  await say(page, 6, "Jordan answers the final check in their own words.", typing, { wait: false });
+  await say(page, 6, typingCaption, typing, { wait: false });
   await typeAnswer(page, "q1", WEAK_ANSWER, 14);
   // The line runs on over the grading caption (1.5 s) and the 0.2 s kept after it.
   await sleep(Math.max(0, (Math.max(readSeconds(typing), MIN_BEAT_SECONDS) + 0.2 - 1.7) * 1000 - (Date.now() - typedFrom)));
-  cuts.unzoom();
+  unzoom();
   await page.getByTestId("submit-attempt").click();
   // The grading, captioned: the one place the video says what runs live.
   const live = aiLive && sandbox ? "Graded live by Claude Sonnet 5.5, on PayPal's sandbox." : aiLive ? "Graded live by Claude Sonnet 5.5." : sandbox ? "Grading, on PayPal's sandbox." : "Grading.";
@@ -364,18 +419,24 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const missedQuoted = page.locator('[data-testid^="question-1-"] li[data-testid^="item-"][data-verdict="not_met"]').filter({ has: page.getByTestId("deciding-quote") });
   const gradedLine = (await missedQuoted.count()) > 0 ? missedQuoted.first() : quotedLines.first();
   await centre(gradedLine);
-  const lineZoom = await zoomAbove(page, gradedLine, 1.35);
+  const lineCaption = `${grader} marks each line, quoting Jordan's words.`;
+  const lineZoom = await zoomAbove(page, gradedLine, 1.5, lineCaption);
   cuts.resume();
-  cuts.zoom(lineZoom);
-  await say(page, 7, `${grader} marks each line, quoting Jordan's words.`, `${grader} marks every rubric line and quotes Jordan's own words.`);
-  cuts.unzoom();
+  zoomTo(lineZoom);
+  await say(page, 7, lineCaption, `${grader} marks every rubric line and quotes Jordan's own words.`);
+  // The score, zoomed so it reads at YouTube size: the summary line and the big number under it.
   const headline = page.getByTestId("attempt-summary-headline");
   const firstScore = (await page.getByTestId("score-1").innerText()).split("/")[0].trim();
   const passMark = /pass mark (\d+)/.exec(await headline.innerText())?.[1];
   expect(passMark, "the summary line states the pass mark").toBeTruthy();
-  await centre(headline);
+  const scoreCaption = `Code adds the points: ${firstScore} of 100, pass mark ${passMark}.`;
+  cuts.pause(0.1);
+  const scoreZoom = await zoomAbove(page, page.getByRole("main").getByTestId("attempt-summary").first(), 1.8, scoreCaption);
+  cuts.resume();
+  zoomTo(scoreZoom);
   await highlight(page, headline, 600);
-  await say(page, 7, `Code adds the points: ${firstScore} of 100, pass mark ${passMark}.`, `Code, not the model, adds the points: ${firstScore} of a hundred. The pass mark is ${passMark}.`);
+  await say(page, 7, scoreCaption, `Code, not the model, adds the points: ${firstScore}. The pass mark is ${passMark}.`);
+  unzoom();
   await beat("first grade");
 
   // 7b. Jordan contests one line, once; the second reader quotes both sides and recommends; a person rules
@@ -390,12 +451,21 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await contestBox.locator("summary").click();
   await contestBox.getByTestId("contest-item").selectOption(contested.id);
   await contestBox.getByTestId("contest-note").fill(`My answer says "${ownWords}", so it does what the line asks.`);
-  await centre(contestBox);
+  // The caption sits over the contest form itself, filled in with Jordan's note, before it's sent.
+  const contestCaption = "Jordan contests one line, quoting their own answer.";
+  const contestLine = "Jordan thinks one line was marked wrong, and contests it, once.";
+  const contestZoom = await zoomAbove(page, contestBox, 1.4, contestCaption);
   cuts.resume();
-  await highlight(page, contestBox, 600);
+  zoomTo(contestZoom);
+  const contestFrom = Date.now();
+  await highlight(page, contestBox.getByTestId("contest-note"), 1400);
+  await say(page, 7, contestCaption, contestLine, { wait: false });
+  await sleep(2400);
+  await highlight(page, contestBox.getByTestId("contest-send"), 500);
   await contestBox.getByTestId("contest-send").click();
   await page.getByTestId("contest-status").waitFor({ timeout: 30_000 });
-  await say(page, 7, "Jordan contests one line, once, quoting their own answer.", "Jordan thinks one line was marked wrong, and contests it, once.", { ms: 4000 });
+  await sleep(Math.max(0, (Math.max(readSeconds(contestLine), MIN_BEAT_SECONDS) + 0.3) * 1000 - (Date.now() - contestFrom)));
+  unzoom();
   cuts.pause(0.2);
   await page.goto("/team");
   const jordanCard = page.getByTestId(`enrollment-${enrollmentId}`);
@@ -404,38 +474,32 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const recommends = (await reader.getAttribute("data-recommendation")) === "uphold";
   await jordanCard.getByTestId("contest-ruling-note").fill(recommends ? "Agreed: the answer says it." : "The answer doesn't say what the line asks.");
   await centre(jordanCard.getByTestId("team-contest"));
-  const readerZoom = await zoomAbove(page, reader, 1.25);
-  cuts.resume();
-  cuts.zoom(readerZoom);
-  await highlight(page, reader, 900);
   const secondReader = aiLive ? "Claude" : "The second reader";
+  const readerCaption = `${secondReader} recommends: ${recommends ? "uphold" : "let it stand"}. A person rules.`;
+  const readerZoom = await zoomAbove(page, reader, 1.3, readerCaption);
+  cuts.resume();
+  zoomTo(readerZoom);
+  await highlight(page, reader, 900);
   const ruleFrom = Date.now();
-  const readerLine = `${secondReader} quotes both sides and recommends. A person rules; the grade only changes if they uphold it.`;
-  await say(page, 7, `${secondReader} recommends: ${recommends ? "uphold" : "let it stand"}. A person rules.`, readerLine, { wait: false });
+  const readerLine = `${secondReader} recommends. A person rules; only an upheld line changes the grade.`;
+  await say(page, 7, readerCaption, readerLine, { wait: false });
   await sleep(2600);
   await highlight(page, jordanCard.getByTestId(recommends ? "contest-uphold" : "contest-reject"), 500);
   await jordanCard.getByTestId(recommends ? "contest-uphold" : "contest-reject").click();
   await jordanCard.getByTestId("team-contest-done").waitFor({ timeout: 30_000 });
   await sleep(Math.max(0, (readSeconds(readerLine) + 0.3) * 1000 - (Date.now() - ruleFrom)));
-  cuts.unzoom();
+  unzoom();
   await beat("contest");
   cuts.pause(0.2);
   await page.goto(jordan);
   // An upheld line adds its points to attempt 1, so the score PayPal's note quotes is read again here.
   const firstNow = (await page.getByTestId("score-1").innerText()).split("/")[0].trim();
 
-  // 8. One short line: the retake opens a day later, after the study list; the demo skips the wait
+  // 8. Off camera: the study list, then the 24-hour wait skipped (the try-two caption says so)
   cuts.pause(0.2);
   await study(page);
-  const skip = page.getByTestId("skip-wait");
-  await centre(page.getByTestId("attempt-gap"));
-  cuts.resume();
-  await highlight(page, skip, 500);
-  await say(page, 8, "The retake opens 24 hours later. Skip the wait (demo) jumps ahead.", "Retakes open a day later, after a study list. We skip the wait.");
-  await skip.click();
-  cuts.pause(0.6);
+  await page.getByTestId("skip-wait").click();
   await page.getByTestId("submit-attempt").waitFor();
-  await beat("skip the wait");
 
   // 10. Try 2, typed off camera, graded on camera
   for (const q of Object.keys(samples.fail2)) await typeAnswer(page, q, samples.fail2[q]);
@@ -445,14 +509,17 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const waiting = page.getByTestId("refund-waiting").or(page.getByTestId("refund-in-review"));
   await waiting.waitFor({ timeout: 150_000 });
   const secondScore = (await page.getByTestId("score-2").innerText()).split("/")[0].trim();
-  const second = page.getByTestId("attempt-2");
-  await centre(second);
-  cuts.resume();
-  await highlight(page, second, 700);
-  await say(page, 10, `Try two, after the study list: ${secondScore}. Short again.`, `Try two, after the study list: ${secondScore}. Short again, so the refund is due.`);
-  const reviewFirst = await page.getByTestId("refund-in-review").isVisible();
+  // The agent's note is written before the camera rolls: a live model takes a few seconds, never uncaptioned on screen.
   const refundNote = waiting.getByTestId("refund-note");
   await refundNote.waitFor({ timeout: 90_000 });
+  // Read once the agent has written its note: by then it has either proposed the refund or sent the case to a person.
+  const reviewFirst = await page.getByTestId("refund-in-review").getByTestId("refund-note").isVisible();
+  const secondCaption = `Try two, a day later (wait skipped): ${secondScore}. Short again.`;
+  const secondZoom = await zoomAbove(page, page.getByRole("main").getByTestId("attempt-summary").first(), 1.6, secondCaption);
+  cuts.resume();
+  zoomTo(secondZoom);
+  await say(page, 10, secondCaption, `A day later, after a study list, try two: ${secondScore}. Short again, so the refund is due.`);
+  unzoom();
   await centre(waiting);
   await highlight(page, refundNote, 700);
   await say(page, 10, reviewFirst ? "The refund agent sends this case to a person first, and tells Jordan why." : "The refund agent writes Jordan a note on the lines they missed.", reviewFirst ? "A person looks at this case first. The agent tells Jordan why." : "The refund agent writes Jordan a note on what held them back.");
@@ -469,22 +536,29 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   }
   const approve = jordanCard.getByTestId("approve-button");
   await approve.waitFor({ timeout: 90_000 });
-  // The Approve button in the top half, clear of the caption band.
-  await approve.evaluate((el) => {
-    el.scrollIntoView({ block: "center", behavior: "instant" });
-    window.scrollBy(0, 170);
-  });
+  await noFailedToolStep(page, "approval card");
+  // Zoomed on the approval: the amount and the Approve button, clear of the caption band.
+  const approveCaption = "Code checked the policy and amount. Only a person approves.";
+  const approveZoom = (await zoomAbove(page, approve.locator("xpath=ancestor::*[.//*[@data-testid='approval-reasons']][1]"), 1.5, approveCaption)) ?? (await zoomAbove(page, approve, 1.5, approveCaption));
   cuts.resume();
+  zoomTo(approveZoom);
   await requireLive(page, "approval card");
   await highlight(page, approve, 900);
-  await say(page, 11, "Code checked the policy and the amount. Only a person approves.", "Code checked the policy and the amount. Only a person can approve.", { ms: 5000 });
+  await say(page, 11, approveCaption, "Code checked the policy and the amount. Only a person can approve.", { ms: 5000 });
   // From the click to PayPal's answer, nothing is cut.
   await approve.click();
   const done = jordanCard.getByTestId("team-refund-done");
   await expect(done).toContainText("COMPLETED", { timeout: 90_000 });
-  await highlight(page, done, 700);
   const reported = /PayPal reports it ([A-Z]+)/.exec(await done.innerText())?.[1] ?? "COMPLETED";
-  await say(page, 11, `Approved. ${sandbox ? "PayPal" : "The stand-in"} reports the refund ${reported}.`, `One click, and ${paypal} reports the refund ${reported.toLowerCase()}.`);
+  const doneCaption = `Approved. ${sandbox ? "PayPal" : "The stand-in"} reports the refund ${reported}.`;
+  cuts.pause(0.4);
+  unzoom();
+  const doneZoom = await zoomAbove(page, done, 1.6, doneCaption);
+  cuts.resume();
+  zoomTo(doneZoom);
+  await highlight(page, done, 700);
+  await say(page, 11, doneCaption, `One click, and ${paypal} reports the refund ${reported.toLowerCase()}.`);
+  unzoom();
   await beat("approved");
 
   // 12. Jordan's refund card: the amount back, and PayPal's own note quoting both scores
@@ -505,19 +579,14 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const noteText = (await note.isVisible()) ? await note.innerText() : "";
   const quotesBoth = noteText.includes(firstNow) && noteText.includes(secondScore);
   if (sandbox) expect(quotesBoth, `PayPal's note_to_payer quotes both scores: "${noteText}"`).toBe(true);
-  await centre(issued);
-  const issuedZoom = await zoomOn(page, issued, 1.3);
+  // Zoomed on PayPal's own note: the amount back, and both scores in PayPal's words.
+  const issuedCaption = quotesBoth ? `${amount} back. ${paypals} note: ${firstNow} and ${secondScore}, pass mark ${passMark}.` : `Refund issued: ${amount} back to Jordan.`;
+  const issuedZoom = await zoomAbove(page, quotesBoth ? note : issued, 1.7, issuedCaption);
   cuts.resume();
-  cuts.zoom(issuedZoom);
+  zoomTo(issuedZoom);
   await highlight(page, quotesBoth ? note : page.getByTestId("refund-id"), 1400);
-  await say(
-    page,
-    12,
-    quotesBoth ? `${amount} back. ${paypals} note on the refund: ${firstNow} and ${secondScore}, pass mark ${passMark}.` : `Refund issued: ${amount} back to Jordan.`,
-    quotesBoth ? `Jordan gets ${amount} back. ${paypals} own note on the refund quotes both scores.` : `Jordan gets ${amount} back, with ${paypals} refund id.`,
-    { ms: 7000 },
-  );
-  cuts.unzoom();
+  await say(page, 12, issuedCaption, quotesBoth ? `Jordan gets ${amount} back. ${paypals} own note on the refund quotes both scores.` : `Jordan gets ${amount} back, with ${paypals} refund id.`);
+  unzoom();
   await beat("refunded");
 
   // 12c. /verify: the order read back from PayPal carries the same fingerprint; then one word changed, and no match
@@ -532,12 +601,13 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const verifiedFingerprint = (await fromPayPal.innerText()).replace(/\s+/g, "").match(/[0-9a-f]{12}/)?.[0];
   if (cartFingerprint) expect(verifiedFingerprint, "the fingerprint on PayPal's cart and the one read back from PayPal's order").toBe(cartFingerprint);
   await centre(fromPayPal);
-  const verifyZoom = await zoomAbove(page, fromPayPal, 1.3);
+  const verifyCaption = `From ${paypals} order: fingerprint ${verifiedFingerprint}.`;
+  const verifyZoom = await zoomAbove(page, fromPayPal, 1.6, verifyCaption);
   cuts.resume();
-  cuts.zoom(verifyZoom);
+  zoomTo(verifyZoom);
   await highlight(page, fromPayPal, 1200);
-  await say(page, 12, `From ${paypals} order: fingerprint ${verifiedFingerprint}.`, `Anyone can check on /verify: ${paypals} order gives back the same fingerprint.`, { ms: 4500 });
-  cuts.unzoom();
+  await say(page, 12, verifyCaption, `Anyone can check on /verify: ${paypals} order gives back the same fingerprint.`, { ms: 4500 });
+  unzoom();
   // The lock catches a change: one line of a copy of the rubric, edited in the browser
   cuts.pause(0.1);
   const change = main.getByTestId("change-one-line");
@@ -553,10 +623,14 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const changeResult = change.getByTestId("change-result");
   await expect(changeResult).toHaveAttribute("data-status", "no-match");
   const changedLabel = /You changed (Question \d+, line \d+)/.exec(await change.getByTestId("change-named-line").innerText())?.[1] ?? "one line";
-  cuts.zoom(await zoomAbove(page, changeResult, 1.25));
+  const changeCaption = `${changedLabel}, one word changed: no match.`;
+  cuts.pause(0.3);
+  const changeZoom = await zoomAbove(page, changeResult, 1.7, changeCaption);
+  cuts.resume();
+  zoomTo(changeZoom);
   await highlight(page, changeResult, 900);
-  await say(page, 12, `${changedLabel}, one word changed: no match.`, `Change one word of the rubric, and it no longer matches ${paypals} record.`, { ms: 5000 });
-  cuts.unzoom();
+  await say(page, 12, changeCaption, `Change one word of the rubric, and it no longer matches ${paypals} record.`, { ms: 5000 });
+  unzoom();
   await beat("catches a change");
 
   // 14. The close: the creator's earnings card, every figure read back from PayPal
@@ -574,22 +648,24 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await centre(earnings);
   cuts.resume();
   await highlight(page, earnings, 1200);
-  await say(page, 14, `What the course earned, read from ${paypal}: ${sold} sold, ${refunded} refunded, ${net} net.`, `And the creator's earnings, read from ${paypal}: ${sales}, ${refunds}, ${net} net.`, { ms: CLOSE_SECONDS * 1000 });
+  await say(page, 14, `What the course earned, read from ${paypal}: ${sold} sold, ${refunded} refunded, ${net} net.`, `And the creator's earnings, read from ${paypal}: ${sales}, ${refunds}, ${net} net.`);
   await beat("earnings");
 
   // 15. The end card: what runs where, and the address to try it
   const stack = ["PayPal Orders v2", "Payments v2", "Webhooks", "Server SDK", ...(aiLive ? ["Claude Sonnet and Haiku"] : []), "sandbox only"].join(" · ");
   const host = new URL(baseURL!).host;
   script.push({ at: at(), text: `Pass or Refund · ${host}` });
-  voiceover.push({ shot: 15, at: at(), text: "Pass or Refund: the terms on PayPal, the refund from a person." });
-  await titleCard(page, "Pass or Refund", `${host}<br>${stack}`, END_CARD_SECONDS * 1000);
+  const endLine = "Pass or Refund: the terms on PayPal, the refund from a person.";
+  voiceover.push({ shot: 15, at: at(), text: endLine });
+  // Held for the line, so the last words aren't cut off.
+  await titleCard(page, "Pass or Refund", `${host}<br>${stack}`, Math.max(END_CARD_SECONDS, readSeconds(endLine) + 0.3) * 1000);
   await beat("end");
 
   // The cut. A cut without PayPal's window (mock PayPal) still leaves room for it.
   const parts = cuts.finish();
   const total = cuts.editedExact;
   const edited = Math.round(total + (paypalWindow ? 0 : PAYPAL_CLIP_SECONDS));
-  console.log(`[demo] edited cut about ${edited}s (target ${EDITED_MIN_SECONDS}-${EDITED_MAX_SECONDS}s, limit ${EDITED_LIMIT_SECONDS}s); home page ${landingSeconds.toFixed(1)}s (limit ${LANDING_LIMIT_SECONDS}s); PayPal window ${paypalWindow ? `spliced in, ${PAYPAL_CLIP_SECONDS}s` : "not in this cut, its time counted"}`);
+  console.log(`[demo] edited cut about ${edited}s (target ${EDITED_MIN_SECONDS}-${EDITED_MAX_SECONDS}s, limit ${EDITED_LIMIT_SECONDS}s); opener ${openerSeconds.toFixed(1)}s (${OPENER_MIN_SECONDS}-${OPENER_MAX_SECONDS}s); PayPal window ${paypalWindow ? `spliced in, ${PAYPAL_CLIP_SECONDS}s` : "not in this cut, its time counted"}`);
 
   // The voiceover: from the first frame, every line where its shot starts. Each must fit before the
   // next, and each narrated beat stays on screen MIN_BEAT_SECONDS or more.
@@ -607,10 +683,11 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await page.close();
   await video?.saveAs("videos/demo-pass-or-refund.webm");
   if (popup && paypalWindow) await popup.video()?.saveAs("videos/demo-paypal-window.webm");
-  fs.writeFileSync("videos/demo-edit.json", JSON.stringify({ size: `${SIZE.width}x${SIZE.height}`, videos: { main: "videos/demo-pass-or-refund.webm", popup: "videos/demo-paypal-window.webm" }, parts }, null, 2));
+  fs.writeFileSync("videos/demo-edit.json", JSON.stringify({ size: `${VIDEO_SIZE.width}x${VIDEO_SIZE.height}`, videos: { main: "videos/demo-pass-or-refund.webm", popup: "videos/demo-paypal-window.webm" }, parts }, null, 2));
   expect(voiceover[0].at, "the narration starts with the first frame").toBe(0);
   expect(tight, "voiceover lines that run into the next one: trim the line, not the shot").toEqual([]);
-  expect(landingSeconds).toBeLessThanOrEqual(LANDING_LIMIT_SECONDS);
+  expect(openerSeconds, "the opener: who it's for and the promise").toBeGreaterThanOrEqual(OPENER_MIN_SECONDS);
+  expect(openerSeconds, "the opener: who it's for and the promise").toBeLessThanOrEqual(OPENER_MAX_SECONDS);
   expect(edited, "the edited cut's length").toBeGreaterThanOrEqual(EDITED_MIN_SECONDS);
   expect(edited, "the edited cut's length").toBeLessThanOrEqual(EDITED_MAX_SECONDS);
 });
