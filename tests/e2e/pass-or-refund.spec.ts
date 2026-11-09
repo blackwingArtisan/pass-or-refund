@@ -1038,17 +1038,30 @@ test.describe("mock-safe flows", () => {
     const capped = new Set(run.caps.filter((c) => c.triggered).map((c) => c.id.split("-")[0]));
     const line = run.items.find((item) => item.verdict !== "met" && !capped.has(item.id.replace(/[a-z]$/, "")))!.id;
     await contest.getByTestId("contest-item").selectOption(line);
-    await contest.getByTestId("contest-note").fill("My answer says the edge is worn, so it needs the stone.");
+    // The learner quotes their own answer, so the second reader has words to check.
+    const quoted = samples.fail1[line.replace(/[a-z]$/, "") as keyof typeof samples.fail1].split(/[.,]/)[0].trim();
+    await contest.getByTestId("contest-note").fill(`My answer says "${quoted}", so it does what the line asks.`);
     await contest.getByTestId("contest-send").click();
     await expect(page.getByTestId("contest-status")).toContainText("With the course team");
     await expect(page.getByTestId("contest-line")).toHaveCount(0);
 
     await page.goto("/team");
     const card = page.getByTestId(`enrollment-${id}`);
-    await expect(card.getByTestId("team-contest")).toContainText("My answer says the edge is worn");
+    await expect(card.getByTestId("team-contest")).toContainText("My answer says");
+    // Claude's second reading: a recommendation with one reason, quoting both sides. It changes nothing by itself.
+    const reader = card.getByTestId("second-reader");
+    await expect(reader).toBeVisible({ timeout: 60_000 });
+    await expect(reader).toHaveAttribute("data-recommendation", "uphold");
+    await expect(reader).toContainText("Recommends: uphold");
+    await expect(card.getByTestId("second-reader-answer-quote")).toContainText(quoted);
+    await expect(card.getByTestId("second-reader-learner-quote")).toContainText(quoted);
+    await expect(reader).toContainText("You rule, and code applies your ruling.");
+    expect((await enrollmentOf(request, id)).attempts[0].score).toBe(first);
+    await card.getByTestId("team-contest").screenshot({ path: "screenshots/contest-second-reader.png" });
     await card.getByTestId("contest-ruling-note").fill("Agreed: your answer says it plainly.");
     await card.getByTestId("contest-uphold").click();
     await expect(card.getByTestId("team-contest-done")).toContainText("upheld");
+    await expect(card.getByTestId("team-contest-reader")).toContainText("The second reader had recommended upholding.");
 
     const after = await enrollmentOf(request, id);
     expect(after.contest?.ruling).toMatchObject({ upheld: true, scoreBefore: first });
@@ -1075,9 +1088,16 @@ test.describe("mock-safe flows", () => {
 
     await page.goto("/team");
     const card = page.getByTestId(`enrollment-${id}`);
+    // The second reader recommends before the person rules; live, Claude may go either way.
+    const reader = card.getByTestId("second-reader");
+    await expect(reader).toBeVisible({ timeout: 90_000 });
+    expect(await reader.getAttribute("data-recommendation")).toMatch(/^(uphold|stand)$/);
+    expect((await card.getByTestId("second-reader-reason").innerText()).length).toBeGreaterThan(10);
+    if (!LIVE_AI) await expect(reader).toHaveAttribute("data-recommendation", "stand");
     await card.getByTestId("contest-ruling-note").fill("The answer names the stone but not why it's needed.");
     await card.getByTestId("contest-reject").click();
     await expect(card.getByTestId("team-contest-done")).toContainText("not upheld");
+    await expect(card.getByTestId("team-contest-reader")).toContainText("The second reader had recommended");
 
     await page.goto(`/learn/${id}`);
     await studyThenRetry(page);
@@ -1658,6 +1678,30 @@ test.describe("paid run", () => {
       expect(paypal.refund).toMatchObject({ status: "COMPLETED", amount: { value: PRICE } });
       expect(paypal.capture.status).toBe("REFUNDED");
     }
+  });
+
+  test("real AI: the second reader recommends on a contest, quoting the note and the answer word for word", async ({ page, request }) => {
+    const id = await buy(page, request, "Real Reader");
+    await attempt(page, "fail1", 1);
+    const graded = (await enrollmentOf(request, id)).attempts[0];
+    const line = graded.runs[graded.shownRun].items.find((item) => item.verdict !== "met")!.id;
+    const answer = samples.fail1[line.replace(/[a-z]$/, "") as keyof typeof samples.fail1];
+    const quoted = answer.split(/[.,]/)[0].trim();
+    const note = `My answer says "${quoted}", so this line should count.`;
+    await page.getByTestId("contest-line").locator("summary").click();
+    await page.getByTestId("contest-item").selectOption(line);
+    await page.getByTestId("contest-note").fill(note);
+    await page.getByTestId("contest-send").click();
+    await expect.poll(async () => (await enrollmentOf(request, id)).contest?.secondReader, { timeout: 90_000 }).toBeTruthy();
+    const reading = (await enrollmentOf(request, id)).contest!.secondReader!;
+    console.log("Real AI second reader:", JSON.stringify(reading));
+    expect(reading.error).toBeUndefined();
+    expect(reading.mocked).toBe(false);
+    expect(reading.recommendation).toMatch(/^(uphold|stand)$/);
+    expect(reading.reason!.length).toBeGreaterThan(10);
+    if (reading.learnerQuote) expect(note).toContain(reading.learnerQuote);
+    if (reading.answerQuote) expect(answer).toContain(reading.answerQuote);
+    expect((await enrollmentOf(request, id)).attempts[0].score).toBe(graded.score);
   });
 
   test("real AI: one failing and one passing attempt", async ({ page, request }) => {
