@@ -25,6 +25,7 @@ const percent = (rate: number) => `${Math.round(rate * 100)}%`;
  */
 const SHOWN_REFUND = {
   id: "4UD1730725427671R",
+  orderId: "3B616040ST1440937",
   amount: "$49.00",
   invoiceId: "PR-v1-ada21f9fbe03-en_020ff237",
   note: "Guarantee refund, rubric v1 ada21f9fbe03: scored 34 and 52, pass mark 70. Sorry we let you down.",
@@ -59,7 +60,12 @@ function HeroRefundCard() {
           </div>
         </dl>
       </div>
-      <figcaption className="mt-2 px-1 text-xs text-zinc-500">A refund this app paid on PayPal&rsquo;s sandbox in a test run, after a person approved it on the course team page.</figcaption>
+      <figcaption className="mt-2 px-1 text-xs text-zinc-500">
+        A refund this app paid on PayPal&rsquo;s sandbox in a test run, after a person approved it on the course team page.{" "}
+        <a href={`/verify?q=${r.orderId}`} className="font-medium text-brand underline" data-testid="landing-verify-link">
+          Verify its order on PayPal
+        </a>
+      </figcaption>
     </figure>
   );
 }
