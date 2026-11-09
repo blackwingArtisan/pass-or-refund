@@ -1,18 +1,18 @@
 import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { appConfig } from "@/app.config";
-import { COURSE_PRICE_CENTS } from "@/lib/course/content";
 import { creatorCase } from "@/lib/course/creator-case";
 import { GRADER_FRESH_SET, graderAccuracyLines } from "@/lib/course/grader-accuracy";
 import { formatCents } from "@/lib/course/policy";
 import { teamPasscode } from "@/lib/course/team-access";
 import { buttonClass, ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
+import { HideWhenClean } from "../course/clean-mode";
 import { CohortStats } from "../course/rubric-receipt";
 import { StoryEyebrow } from "./story";
 
 /**
  * Landing page sections. Content comes from appConfig.landing and creatorCase().
- *   <SiteHeader /> <Hero /> <StopsGaming /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
+ *   <SiteHeader /> <Hero /> <Story /> <StopsGaming /> <SiteFooter />, about two screens at 1440 wide.
  */
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`;
@@ -95,7 +95,7 @@ function ForJudges() {
         <KeyRound className="size-4 text-brand" /> For judges
       </p>
       <p className="mt-1">
-        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team. To skip the typing, turn on <span className="font-medium text-zinc-900">Judge shortcuts</span> above the final check and pick a prepared answer.
+        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team. To skip the typing, open <span className="font-medium text-zinc-900">For judges</span> at the bottom of the menu, turn on Judge shortcuts and pick a prepared answer.
       </p>
       {/* One click to /team, signed in: the form carries the printed passcode. */}
       <form method="post" action="/api/team/judge" className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -125,17 +125,17 @@ export function StopsGaming() {
     { title: "A person signs off", body: "No money moves until someone on your team approves. A score of 69 or 70 goes to a person instead of the grader." },
   ];
   return (
-    <section id="gaming" className="border-t border-zinc-200/70 bg-white py-16">
+    <section id="gaming" className="border-t border-zinc-200/70 bg-white py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why it can&rsquo;t be gamed</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">A refund has to be earned by trying</h2>
-        <ul data-testid="anti-gaming" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul data-testid="anti-gaming" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rules.map((r) => (
-            <li key={r.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-5">
+            <li key={r.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5">
               <p className="flex items-center gap-2 font-semibold text-zinc-900">
                 <ShieldCheck className="size-4 shrink-0 text-brand" /> {r.title}
               </p>
-              <p className="mt-1.5 text-[15px] leading-relaxed text-zinc-600">{r.body}</p>
+              <p className="mt-1 text-sm leading-relaxed text-zinc-600">{r.body}</p>
             </li>
           ))}
         </ul>
@@ -150,8 +150,8 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <AppLogo />
         <nav className="flex items-center gap-2">
-          <a href="#how" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
-            How it works
+          <a href="#gaming" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
+            Why it can&rsquo;t be gamed
           </a>
           <ButtonLink href={appConfig.landing.primaryCta.href} size="sm">
             {appConfig.landing.primaryCta.label}
@@ -159,41 +159,6 @@ export function SiteHeader() {
         </nav>
       </div>
     </header>
-  );
-}
-
-/** The moment the product exists for, with the amount from the one price constant. */
-function RefundPreview() {
-  const rows = [
-    { verdict: "Met", tone: "bg-emerald-50 text-emerald-700", item: "Says honing pushes a rolled edge back", quote: "lines the edge back up" },
-    { verdict: "Partial", tone: "bg-amber-50 text-amber-700", item: "Says when the stone is ready", quote: "Soak the stone for a while" },
-    { verdict: "Missed", tone: "bg-red-50 text-red-700", item: "Burr must run heel to tip", quote: null },
-  ];
-  return (
-    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-900">Second attempt</span>
-        <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Not passed</span>
-      </div>
-      <ol className="space-y-2">
-        {rows.map((r) => (
-          <li key={r.item} className="rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm font-medium text-zinc-900">{r.item}</p>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${r.tone}`}>{r.verdict}</span>
-            </div>
-            <p className="truncate text-xs text-zinc-500">{r.quote ? `\u201c${r.quote}\u201d` : "Added to your study list"}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-4 flex items-start gap-3 rounded-xl bg-brand-50 px-4 py-3">
-        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" />
-        <div>
-          <p className="font-semibold text-zinc-900">Refund issued, sorry we let you down</p>
-          <p className="text-sm text-zinc-600">{formatCents(COURSE_PRICE_CENTS)} back through PayPal, approved by a person.</p>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -239,7 +204,9 @@ export function Hero() {
           <p className="mt-5 flex items-center gap-2 text-sm text-zinc-500">
             <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
-          <ForJudges />
+          <HideWhenClean>
+            <ForJudges />
+          </HideWhenClean>
         </div>
         <div className="space-y-4">
           <CreatorNumbers />
@@ -248,63 +215,6 @@ export function Hero() {
             <CohortStats />
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
-
-export function HowItWorks() {
-  return (
-    <section id="how" className="border-y border-zinc-200/70 bg-white py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <p className="text-sm font-semibold uppercase tracking-wider text-brand">What your learner sees</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">From payment to pass or refund</h2>
-        <div className="mt-10 grid items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
-          <div className="grid gap-4">
-            {appConfig.landing.steps.map((s, i) => (
-              <div key={s.title} className="relative flex gap-4 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-5">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">{i + 1}</span>
-                <div>
-                  <h3 className="text-lg font-semibold text-zinc-900">{s.title}</h3>
-                  <p className="mt-1 text-[15px] leading-relaxed text-zinc-600">{s.body}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <RefundPreview />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export function Features() {
-  return (
-    <section className="py-20">
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 sm:px-6 md:grid-cols-3">
-        {appConfig.landing.features.map((f) => (
-          <div key={f.title} className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <Check className="size-5 text-brand" />
-            <h3 className="mt-3 font-semibold text-zinc-900">{f.title}</h3>
-            <p className="mt-1.5 text-[15px] leading-relaxed text-zinc-600">{f.body}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function CtaBand() {
-  return (
-    <section className="px-4 pb-20 sm:px-6">
-      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-3xl bg-gradient-to-br from-brand-700 to-brand-900 px-8 py-12 text-white shadow-xl md:flex-row md:items-center">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{appConfig.tagline}</h2>
-          <p className="mt-2 text-white/75">Try it as a learner: buy the sample course with PayPal&rsquo;s test card, then fail it twice.</p>
-        </div>
-        <ButtonLink href={appConfig.landing.primaryCta.href} size="lg" variant="secondary" className="border-transparent">
-          {appConfig.landing.primaryCta.label} <ArrowRight className="size-4" />
-        </ButtonLink>
       </div>
     </section>
   );

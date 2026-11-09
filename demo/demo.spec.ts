@@ -159,6 +159,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   beat("bought");
 
   // 3. A weak answer, graded with its quote
+  await page.getByTestId("judge-tools").locator("summary").click();
   const toggle = page.getByTestId("judge-toggle");
   await centre(toggle);
   await highlight(page, toggle, 1400);
