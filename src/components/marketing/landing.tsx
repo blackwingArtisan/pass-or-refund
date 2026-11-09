@@ -1,4 +1,4 @@
-import { ArrowRight, Check, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { creatorCase } from "@/lib/course/creator-case";
 import { GRADER_FRESH_SET, graderAccuracyLines } from "@/lib/course/grader-accuracy";
@@ -12,52 +12,101 @@ import { StoryEyebrow } from "./story";
 
 /**
  * Landing page sections. Content comes from appConfig.landing and creatorCase().
- *   <SiteHeader /> <Hero /> <Story /> <StopsGaming /> <SiteFooter />, about two screens at 1440 wide.
+ * One idea per screen: <Hero /> (the refund itself), <Story /> (why it matters), <ForCreators />
+ * (what it costs a creator), then <StopsGaming /> folded into one expander.
  */
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`;
 
-/** The creator's numbers, all from code: the knobs, the sample refund rate, the grading cost. */
-function CreatorNumbers() {
+/**
+ * A refund this app really paid, read back from PayPal's sandbox after a test run on 9 Nov 2026:
+ * two failed final checks, a person's approval on /team, then POST /v2/payments/captures/{id}/refund.
+ * The note is PayPal's note_to_payer on that refund, as PayPal returned it.
+ */
+const SHOWN_REFUND = {
+  id: "4UD1730725427671R",
+  amount: "$49.00",
+  invoiceId: "PR-v1-ada21f9fbe03-en_020ff237",
+  note: "Guarantee refund, rubric v1 ada21f9fbe03: scored 34 and 52, pass mark 70. Sorry we let you down.",
+};
+
+/** The hero's picture: the refund itself, the way the learner sees it. */
+function HeroRefundCard() {
+  const r = SHOWN_REFUND;
+  return (
+    <figure data-testid="hero-refund-card" className="relative">
+      <div className="rounded-2xl border border-emerald-200 bg-white/95 p-5 shadow-2xl shadow-emerald-900/10 ring-1 ring-black/5 backdrop-blur sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+            <Check className="size-4" /> Refund issued
+          </p>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-emerald-800 ring-1 ring-emerald-200">COMPLETED</span>
+        </div>
+        <p className="mt-3 text-4xl font-semibold tabular-nums tracking-tight text-zinc-950">{r.amount}</p>
+        <p className="mt-1 text-sm text-zinc-600">back to the learner&rsquo;s PayPal, after two failed final checks</p>
+        <blockquote className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm leading-relaxed text-zinc-800">
+          <p className="text-xs font-medium text-zinc-500">PayPal&rsquo;s note to the learner</p>
+          <p className="mt-1">&ldquo;{r.note}&rdquo;</p>
+        </blockquote>
+        <dl className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+          <div>
+            <dt className="text-zinc-500">PayPal refund id</dt>
+            <dd className="font-mono text-zinc-900">{r.id}</dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500">Invoice on the order</dt>
+            <dd className="break-all font-mono text-zinc-900">{r.invoiceId}</dd>
+          </div>
+        </dl>
+      </div>
+      <figcaption className="mt-2 px-1 text-xs text-zinc-500">A refund this app paid on PayPal&rsquo;s sandbox in a test run, after a person approved it on the course team page.</figcaption>
+    </figure>
+  );
+}
+
+/** The creator's side, one screen: three numbers from code, the knobs, how learners did, the grader's record. */
+export function ForCreators() {
   const c = creatorCase();
-  const knobs = [
-    { label: "Price", value: formatCents(c.priceCents) },
-    { label: "Pass mark", value: `${c.passMark} / 100` },
-    { label: "Fails before a refund", value: `${c.failsForRefund}, ${c.gapHours} h apart` },
+  const tiles = [
+    { testId: "creator-refund-rate", label: "Refund rate, sample cohort", value: percent(c.refundRate), note: `${c.refunds} of ${c.learners} made-up learners` },
+    { testId: "creator-grade-cost", label: "One AI grade, Claude Sonnet 5.5", value: `about $${c.gradeCostUsd.toFixed(3)}`, note: "per attempt" },
+    { testId: "creator-kept", label: "Kept per sale", value: formatCents(c.keptPerSaleCents), note: "after refunds and grading" },
   ];
   return (
-    <div data-testid="creator-numbers" className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
-      <p className="text-sm font-semibold text-zinc-900">Your guarantee, in numbers</p>
-      <dl className="mt-3 grid grid-cols-3 gap-2">
-        {knobs.map((k) => (
-          <div key={k.label} className="rounded-xl bg-zinc-50 px-3 py-2">
-            <dt className="text-xs text-zinc-500">{k.label}</dt>
-            <dd className="mt-0.5 font-semibold tabular-nums text-zinc-900">{k.value}</dd>
+    <section id="creators" data-testid="for-creators" className="border-t border-zinc-200/70 bg-white py-12">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">For course creators</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">What the guarantee costs you</h2>
+        <p data-testid="creator-knobs" className="mt-3 text-zinc-600">
+          {formatCents(c.priceCents)} course, pass mark {c.passMark} out of 100, a refund after {c.failsForRefund} complete fails {c.gapHours} hours apart. All three are yours to set.
+        </p>
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+          <div>
+            <dl data-testid="creator-numbers" className="grid gap-3 sm:grid-cols-3">
+              {tiles.map((t) => (
+                <div key={t.testId} className="rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-4">
+                  <dt className="text-xs text-zinc-500">{t.label}</dt>
+                  <dd data-testid={t.testId} className="mt-1 text-2xl font-semibold tabular-nums text-zinc-950">
+                    {t.value}
+                  </dd>
+                  <p className="mt-0.5 text-xs text-zinc-500">{t.note}</p>
+                </div>
+              ))}
+            </dl>
+            <GraderAccuracy />
+            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+              The sample cohort is {c.learners} made-up learners graded on the real rubric, so the rate is illustrative. Before PayPal&rsquo;s fees. Your own learners replace it on{" "}
+              <a href="/cohort" className="underline">the cohort page</a>.{" "}
+              <a href="/creator" className="font-medium text-brand underline">Put your own rubric on the guarantee</a>
+            </p>
           </div>
-        ))}
-      </dl>
-      <dl className="mt-4 space-y-2.5 text-sm">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-zinc-600">Refund rate on the sample cohort</dt>
-          <dd data-testid="creator-refund-rate" className="font-semibold tabular-nums text-zinc-900">
-            {percent(c.refundRate)} <span className="font-normal text-zinc-500">({c.refunds} of {c.learners})</span>
-          </dd>
+          <div data-testid="landing-cohort" className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-black/5">
+            <p className="mb-3 text-sm font-semibold text-zinc-900">How learners did, before you buy</p>
+            <CohortStats />
+          </div>
         </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-zinc-600">One AI grade (Claude Sonnet 5.5)</dt>
-          <dd data-testid="creator-grade-cost" className="font-semibold tabular-nums text-zinc-900">about ${c.gradeCostUsd.toFixed(3)}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 border-t border-zinc-100 pt-2.5">
-          <dt className="text-zinc-600">Kept per sale, after refunds and grading</dt>
-          <dd data-testid="creator-kept" className="font-semibold tabular-nums text-zinc-900">{formatCents(c.keptPerSaleCents)}</dd>
-        </div>
-      </dl>
-      <GraderAccuracy />
-      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-        The sample cohort is {c.learners} made-up learners graded on the real rubric, so the rate is illustrative. Before PayPal&rsquo;s fees. Your own learners replace it on{" "}
-        <a href="/cohort" className="underline">the cohort page</a>.
-      </p>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -65,8 +114,9 @@ function CreatorNumbers() {
 function GraderAccuracy() {
   const g = GRADER_FRESH_SET;
   return (
-    <details data-testid="grader-accuracy" className="group mt-4 rounded-xl bg-zinc-50 px-3 py-2.5 text-sm" open>
-      <summary className="cursor-pointer list-none font-semibold text-zinc-900">
+    <details data-testid="grader-accuracy" className="group mt-4 rounded-xl bg-zinc-50 px-3 py-2.5 text-sm">
+      <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="mr-1 inline size-4 align-[-3px] transition-transform group-open:rotate-90" />
         How accurate is the grader?{" "}
         <span className="font-normal text-zinc-500">
           {g.attempts} new attempts it had never seen, scored first by {g.judges} blind judges, graded {g.repeats} times over
@@ -125,20 +175,27 @@ export function StopsGaming() {
     { title: "A person signs off", body: "No money moves until someone on your team approves. A score of 69 or 70 goes to a person instead of the grader." },
   ];
   return (
-    <section id="gaming" className="border-t border-zinc-200/70 bg-white py-12">
+    <section className="border-t border-zinc-200/70 bg-zinc-50 py-8">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why it can&rsquo;t be gamed</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">A refund has to be earned by trying</h2>
-        <ul data-testid="anti-gaming" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rules.map((r) => (
-            <li key={r.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5">
-              <p className="flex items-center gap-2 font-semibold text-zinc-900">
-                <ShieldCheck className="size-4 shrink-0 text-brand" /> {r.title}
-              </p>
-              <p className="mt-1 text-sm leading-relaxed text-zinc-600">{r.body}</p>
-            </li>
-          ))}
-        </ul>
+        <details id="gaming" data-testid="gaming-details" className="group rounded-2xl border border-zinc-200 bg-white px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-lg font-semibold text-zinc-950">How we stop gaming</span>
+              <span className="block text-sm text-zinc-600">A refund has to be earned by trying: six rules, all in code.</span>
+            </span>
+            <ChevronRight className="size-5 shrink-0 text-zinc-500 transition-transform group-open:rotate-90" />
+          </summary>
+          <ul data-testid="anti-gaming" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {rules.map((r) => (
+              <li key={r.title} className="rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5">
+                <p className="flex items-center gap-2 font-semibold text-zinc-900">
+                  <ShieldCheck className="size-4 shrink-0 text-brand" /> {r.title}
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-zinc-600">{r.body}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
       </div>
     </section>
   );
@@ -150,8 +207,11 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <AppLogo />
         <nav className="flex items-center gap-2">
+          <a href="#creators" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
+            For creators
+          </a>
           <a href="#gaming" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
-            Why it can&rsquo;t be gamed
+            How we stop gaming
           </a>
           <ButtonLink href={appConfig.landing.primaryCta.href} size="sm">
             {appConfig.landing.primaryCta.label}
@@ -213,13 +273,7 @@ export function Hero() {
             <ForJudges />
           </HideWhenClean>
         </div>
-        <div className="space-y-4">
-          <CreatorNumbers />
-          <div data-testid="landing-cohort" className="rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm ring-1 ring-black/5">
-            <p className="mb-3 text-sm font-semibold text-zinc-900">How learners did, before you buy</p>
-            <CohortStats />
-          </div>
-        </div>
+        <HeroRefundCard />
       </div>
     </section>
   );

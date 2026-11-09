@@ -15,6 +15,7 @@ import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textare
 import { CURRENCY, rubric } from "@/lib/course/content";
 import { formatCents, shortfallItems } from "@/lib/course/policy";
 import { isCourseStep, TEAM_CHANNEL } from "@/lib/course/scope";
+import { waitsForTeam } from "@/lib/course/screen-order";
 import type { Attempt, EnrollmentStatus, EnrollmentView } from "@/lib/course/types";
 
 const STATUS: Record<EnrollmentStatus, { label: string; tone: Tone }> = {
@@ -281,37 +282,68 @@ export function TeamScreen() {
   const { kitFetch } = useKit();
   const { steps } = useTimeline({ includeGlobal: false, channels: [TEAM_CHANNEL] });
   const [enrollments, setEnrollments] = useState<EnrollmentView[] | null>(null);
-  const load = useCallback(() => void kitFetch<{ enrollments: EnrollmentView[] }>("/api/team").then((r) => setEnrollments(r.enrollments)).catch(() => undefined), [kitFetch]);
+  // A card stays at the top once it waited for a person, so it doesn't jump away the moment they approve.
+  const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
+  const show = useCallback((list: EnrollmentView[]) => {
+    setEnrollments(list);
+    setKept((prev) => {
+      const fresh = list.filter((e) => waitsForTeam(e) && !prev.has(e.id));
+      return fresh.length === 0 ? prev : new Set([...prev, ...fresh.map((e) => e.id)]);
+    });
+  }, []);
+  const load = useCallback(() => void kitFetch<{ enrollments: EnrollmentView[] }>("/api/team").then((r) => show(r.enrollments)).catch(() => undefined), [kitFetch, show]);
 
   useEffect(() => {
     let live = true;
-    const fetchTeam = () => kitFetch<{ enrollments: EnrollmentView[] }>("/api/team").then((r) => live && setEnrollments(r.enrollments)).catch(() => undefined);
+    const fetchTeam = () => kitFetch<{ enrollments: EnrollmentView[] }>("/api/team").then((r) => live && show(r.enrollments)).catch(() => undefined);
     void fetchTeam();
     const timer = setInterval(fetchTeam, 1000);
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [kitFetch]);
+  }, [kitFetch, show]);
 
   // A checkout nobody finished took no money and needs nothing from the team.
   const paid = useMemo(() => enrollments?.filter((e) => e.status !== "unpaid"), [enrollments]);
+  const waiting = useMemo(() => paid?.filter((e) => waitsForTeam(e) || kept.has(e.id)) ?? [], [paid, kept]);
+  const rest = useMemo(() => paid?.filter((e) => !waitsForTeam(e) && !kept.has(e.id)) ?? [], [paid, kept]);
   const timelineSteps = useMemo(() => steps.filter(isCourseStep).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
   return (
     <>
       <PageHeader eyebrow="Course team" title="Refunds and learners" description="Policy decides when a refund is due. A person approves it here before any money moves." />
-      <p data-testid="team-access-rule" className="mb-4 flex items-start gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-zinc-500" />
-        <span>This page sits behind a passcode that is printed for judges on the home page, so judges can approve a refund without an account. Learners&rsquo; emails never reach it. This app only runs on PayPal&rsquo;s sandbox, so no real money can move. A real course would use staff logins instead.</span>
-      </p>
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-4">
           {!enrollments ? <SkeletonCard /> : null}
+          {/* The list opens on what needs a person, so a judge who clicked "Open the course team view" lands on it. */}
+          {paid && paid.length > 0 ? (
+            <section id="approvals" data-testid="team-approvals" className="scroll-mt-20 space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                Waiting for you <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-amber-900" data-testid="team-waiting-count">{paid.filter(waitsForTeam).length}</span>
+              </h2>
+              {waiting.length === 0 ? (
+                <p data-testid="team-nothing-waiting" className="rounded-lg border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-600">
+                  Nothing is waiting for you. A refund that needs approval shows up here first, the moment a learner fails twice.
+                </p>
+              ) : (
+                waiting.map((enrollment) => <EnrollmentCard key={enrollment.id} enrollment={enrollment} onChange={load} />)
+              )}
+            </section>
+          ) : null}
           {paid?.length === 0 ? <EmptyState icon={<Users className="size-5" />} title="No learners yet" description="Buy the course to see someone here." /> : null}
-          {paid?.map((enrollment) => (
-            <EnrollmentCard key={enrollment.id} enrollment={enrollment} onChange={load} />
-          ))}
+          {rest.length > 0 ? (
+            <section data-testid="team-everyone-else" className="space-y-3 pt-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Everyone else</h2>
+              {rest.map((enrollment) => (
+                <EnrollmentCard key={enrollment.id} enrollment={enrollment} onChange={load} />
+              ))}
+            </section>
+          ) : null}
+          <p data-testid="team-access-rule" className="flex items-start gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+            <span>This page sits behind a passcode that is printed for judges on the home page, so judges can approve a refund without an account. Learners&rsquo; emails never reach it. This app only runs on PayPal&rsquo;s sandbox, so no real money can move. A real course would use staff logins instead.</span>
+          </p>
         </div>
         <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
           <ToolCallTimeline steps={timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and approvals show up here as they happen." />
