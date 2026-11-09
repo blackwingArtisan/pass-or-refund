@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { creatorCourse } from "@/lib/course/creator-store";
 import { resumePurchase, startPurchase } from "@/lib/course/purchase";
 import { getContext } from "@/lib/events/bus";
 import { isTestRun } from "@/lib/course/team-access";
@@ -11,13 +12,15 @@ const plainName = z
   .transform((s) => s.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim())
   .pipe(z.string().min(1));
 
-const Body = z.object({ learnerName: plainName, learnerEmail: z.email().max(200) });
+const Body = z.object({ learnerName: plainName, learnerEmail: z.email().max(200), courseId: z.string().regex(/^cc_[0-9a-f]{12}$/).optional() });
 
-/** Opens an enrollment and its PayPal order, unless this learner has already paid. The price comes from the course, not this request. */
+/** Opens an enrollment and its PayPal order, unless this learner has already paid. The price comes from the course (the sample, or a creator's courseId), not this request. */
 export const POST = route(async (req) => {
-  const { learnerName, learnerEmail } = await readJson(req, Body);
-  const paid = await resumePurchase(learnerEmail, getContext().channel);
+  const { learnerName, learnerEmail, courseId } = await readJson(req, Body);
+  // A creator's course must exist, with its rubric still matching its link, before anyone pays for it.
+  if (courseId) creatorCourse(courseId);
+  const paid = await resumePurchase(learnerEmail, getContext().channel, courseId);
   if (paid) return { enrollmentId: paid.id, alreadyPaid: true };
-  const { enrollment, orderId } = await startPurchase(learnerName, learnerEmail, { testRun: isTestRun(req) });
+  const { enrollment, orderId } = await startPurchase(learnerName, learnerEmail, { testRun: isTestRun(req), courseId });
   return { enrollmentId: enrollment.id, orderId };
 });

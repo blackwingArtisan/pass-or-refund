@@ -1,7 +1,7 @@
 "use client";
 
 import { showError } from "@/components/error-toast";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useKit } from "@/components/kit/kit-provider";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
@@ -17,7 +17,11 @@ import { RubricOnSale } from "./rubric-receipt";
 /** Stops the checkout quietly: this learner paid already, so they're on their way to the course. */
 class AlreadyPaid extends Error {}
 
-export function CourseScreen() {
+/**
+ * Name, email and PayPal's checkout for one course: the sample course, or a creator's own (courseId).
+ * The server sets the price from the course; `priceCents` is only the label.
+ */
+export function BuyBox({ courseId, priceCents, children }: { courseId?: string; priceCents: number; children?: ReactNode }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const router = useRouter();
@@ -29,7 +33,7 @@ export function CourseScreen() {
   const ready = Boolean(name) && /^\S+@\S+\.\S+$/.test(email);
 
   async function createOrder() {
-    const created = await kitFetch<{ enrollmentId: string; orderId?: string; alreadyPaid?: boolean }>("/api/enrollments", { json: { learnerName: name, learnerEmail: email } });
+    const created = await kitFetch<{ enrollmentId: string; orderId?: string; alreadyPaid?: boolean }>("/api/enrollments", { json: { learnerName: name, learnerEmail: email, ...(courseId ? { courseId } : {}) } });
     enrollmentId.current = created.enrollmentId;
     if (!created.orderId) {
       router.push(`/learn/${created.enrollmentId}`);
@@ -58,6 +62,33 @@ export function CourseScreen() {
     return true;
   }, [kitFetch, router]);
 
+  return (
+    <>
+      {children}
+      <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
+        <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
+      </Field>
+      <Field label="Your email" hint="Guarantee: one refund per PayPal account. It is matched on this address and the PayPal account that pays." htmlFor="learner-email">
+        <Input id="learner-email" data-testid="learner-email" type="email" value={learnerEmail} maxLength={200} onChange={(e) => setLearnerEmail(e.target.value)} placeholder="alex@example.com" />
+      </Field>
+      <CheckoutButton
+        createOrder={createOrder}
+        onApprove={onApprove}
+        checkPayment={checkPayment}
+        onError={(e) => {
+          if (!(e instanceof AlreadyPaid)) showError(toast, "The payment didn't go through", e);
+        }}
+        amountLabel={formatCents(priceCents)}
+        disabled={!ready}
+        buyerEmail={email}
+        label={`Buy for ${formatCents(priceCents)}`}
+      />
+      {ready ? null : <p className="text-xs text-zinc-500">Add your name and email to buy.</p>}
+    </>
+  );
+}
+
+export function CourseScreen() {
   return (
     <>
       <PageHeader eyebrow={`By ${course.creator}`} title={course.title} description={course.subtitle} />
@@ -89,27 +120,10 @@ export function CourseScreen() {
         <Card>
           <CardHeader title={formatCents(COURSE_PRICE_CENTS)} description="One payment, taken by PayPal when you buy." />
           <CardBody className="space-y-4">
-            <Guarantee />
-            <RubricOnSale />
-            <Field label="Your name" hint="It goes on your certificate." htmlFor="learner-name">
-              <Input id="learner-name" data-testid="learner-name" value={learnerName} maxLength={80} onChange={(e) => setLearnerName(e.target.value)} placeholder="Alex Rivera" />
-            </Field>
-            <Field label="Your email" hint="Guarantee: one refund per PayPal account. It is matched on this address and the PayPal account that pays." htmlFor="learner-email">
-              <Input id="learner-email" data-testid="learner-email" type="email" value={learnerEmail} maxLength={200} onChange={(e) => setLearnerEmail(e.target.value)} placeholder="alex@example.com" />
-            </Field>
-            <CheckoutButton
-              createOrder={createOrder}
-              onApprove={onApprove}
-              checkPayment={checkPayment}
-              onError={(e) => {
-                if (!(e instanceof AlreadyPaid)) showError(toast, "The payment didn't go through", e);
-              }}
-              amountLabel={formatCents(COURSE_PRICE_CENTS)}
-              disabled={!ready}
-              buyerEmail={email}
-              label={`Buy for ${formatCents(COURSE_PRICE_CENTS)}`}
-            />
-            {ready ? null : <p className="text-xs text-zinc-500">Add your name and email to buy.</p>}
+            <BuyBox priceCents={COURSE_PRICE_CENTS}>
+              <Guarantee />
+              <RubricOnSale />
+            </BuyBox>
           </CardBody>
         </Card>
       </div>

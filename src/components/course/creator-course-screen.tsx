@@ -8,7 +8,9 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
-import { MAX_ANSWER_CHARS } from "@/lib/course/policy";
+import { formatCents, MAX_ANSWER_CHARS } from "@/lib/course/policy";
+import { BuyBox } from "./course-screen";
+import { Guarantee } from "./guarantee";
 import type { GradedAttempt } from "@/lib/course/types";
 import type { Rubric } from "@/lib/grading/frozen/score-items";
 
@@ -17,6 +19,7 @@ interface CourseView {
   fingerprint: string;
   rubric: Rubric;
   notes: string;
+  priceCents: number;
 }
 
 const grouped = (fingerprint: string) => fingerprint.match(/.{1,4}/g)?.join(" ") ?? fingerprint;
@@ -69,7 +72,7 @@ export function CreatorCourseScreen({ id }: { id: string }) {
 
   return (
     <>
-      <PageHeader eyebrow="A creator's course" title={rubric.title} description={`Pass mark ${rubric.passMark} out of 100. Graded by the same sealed grader as the sample course; code adds up the points.`} />
+      <PageHeader eyebrow="A creator's course" title={rubric.title} description={`${formatCents(course.priceCents)}, with the same refund guarantee as the sample course. Pass mark ${rubric.passMark} out of 100. Graded by the same sealed grader; code adds up the points.`} />
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">
           {result && run ? (
@@ -106,7 +109,7 @@ export function CreatorCourseScreen({ id }: { id: string }) {
             </Card>
           ) : null}
           <Card id="final-check">
-            <CardHeader title="Final check" description="Write in your own words." />
+            <CardHeader title="Try the final check" description="Practice before you buy: graded the same way, and nothing is saved. Buy the course to take it for real, under the guarantee." />
             <CardBody className="space-y-5">
               {rubric.questions.map((q, qi) => (
                 <Field key={q.id} label={`Question ${qi + 1}`} hint={q.text} htmlFor={`cc-${q.id}`}>
@@ -119,7 +122,19 @@ export function CreatorCourseScreen({ id }: { id: string }) {
             </CardBody>
           </Card>
         </div>
-        <Card className="self-start">
+        <div className="min-w-0 space-y-6 self-start">
+        <Card data-testid="creator-buy">
+          <CardHeader title={formatCents(course.priceCents)} description="One payment, taken by PayPal when you buy." />
+          <CardBody className="space-y-4">
+            <BuyBox courseId={course.id} priceCents={course.priceCents}>
+              <Guarantee priceCents={course.priceCents} />
+              <p className="text-xs text-zinc-500">
+                Your purchase locks this rubric, fingerprint <code className="font-mono text-zinc-900">{grouped(course.fingerprint)}</code>. You&rsquo;re graded on exactly these words.
+              </p>
+            </BuyBox>
+          </CardBody>
+        </Card>
+        <Card>
           <CardHeader title="The rubric" description="Public, before anyone answers." />
           <CardBody className="space-y-4 text-sm">
             <div className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2">
@@ -148,6 +163,7 @@ export function CreatorCourseScreen({ id }: { id: string }) {
             ))}
           </CardBody>
         </Card>
+        </div>
       </div>
     </>
   );

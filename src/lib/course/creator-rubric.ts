@@ -8,6 +8,22 @@ import type { Rubric } from "@/lib/grading/frozen/score-items";
 
 export const LIMITS = { questions: 6, lines: 8, caps: 3, titleChars: 80, textChars: 600, notesChars: 6000 } as const;
 
+/**
+ * A creator's price, in whole dollars. Up to the sample course's $49: a sale at or under the Guard's
+ * approval threshold is captured without a second person, the same as the sample course.
+ */
+export const PRICE_DOLLARS = { min: 1, max: 49, default: 49 } as const;
+
+/** The price in cents, or the problem in plain words. */
+export function checkPrice(input: unknown): { ok: true; cents: number } | { ok: false; problem: string } {
+  const text = String(input ?? "").trim().replace(/^\$/, "");
+  const dollars = text === "" ? PRICE_DOLLARS.default : Number(text);
+  if (!Number.isInteger(dollars) || dollars < PRICE_DOLLARS.min || dollars > PRICE_DOLLARS.max) {
+    return { ok: false, problem: `The price has to be a whole number of dollars from $${PRICE_DOLLARS.min} to $${PRICE_DOLLARS.max}.` };
+  }
+  return { ok: true, cents: dollars * 100 };
+}
+
 /** What the simple form sends: one question per entry, rubric lines as "7 Says honing ..." text. */
 export interface RubricForm {
   title: string;

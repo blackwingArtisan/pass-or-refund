@@ -8,6 +8,7 @@ import type { PayPalApi } from "@/lib/paypal/api";
 import { singleton } from "@/lib/singleton";
 import { collection } from "@/lib/store/collection";
 import { course, COURSE_PRICE_CENTS } from "./content";
+import { creatorCourse, creatorCoursePath, creatorCourses, creatorPriceCents } from "./creator-store";
 import { lockRubric } from "./rubric-lock";
 import { checkGuarantee, completedFails, guaranteeVoid, learnerKey, nextAttemptOpensAt, sameLearner } from "./policy";
 import { overdueFor } from "./overdue";
@@ -20,20 +21,23 @@ const enrollments = () => collection<Enrollment>("enrollments");
 export const activeRefunds = () => singleton("course:active-refunds", () => new Set<string>());
 export const activeGrading = () => singleton("course:active-grading", () => new Set<string>());
 
-export function createEnrollment(learnerName: string, learnerEmail: string, opts: { testRun?: boolean } = {}): Enrollment {
-  return enrollments().upsert({
+export function createEnrollment(learnerName: string, learnerEmail: string, opts: { testRun?: boolean; courseId?: string } = {}): Enrollment {
+  const base = {
     id: `en_${randomUUID().slice(0, 8)}`,
     learnerName,
     learnerEmail,
-    courseSlug: course.slug,
-    status: "unpaid",
+    status: "unpaid" as const,
     createdAt: new Date().toISOString(),
-    priceCents: COURSE_PRICE_CENTS,
     attempts: [],
     ...(opts.testRun ? { testRun: true } : {}),
-    // The terms the learner sees at checkout are the ones they're graded on.
-    rubric: lockRubric(),
-  });
+  };
+  if (opts.courseId) {
+    // A creator's course: their price, and their rubric's fingerprint locked at checkout.
+    const creator = creatorCourse(opts.courseId);
+    return enrollments().upsert({ ...base, courseSlug: creator.id, courseId: creator.id, priceCents: creatorPriceCents(creator), rubric: { version: "1", fingerprint: creator.fingerprint, lockedAt: base.createdAt } });
+  }
+  // The terms the learner sees at checkout are the ones they're graded on.
+  return enrollments().upsert({ ...base, courseSlug: course.slug, priceCents: COURSE_PRICE_CENTS, rubric: lockRubric() });
 }
 
 export const enrollmentIfAny = (id: string): Enrollment | undefined => enrollments().get(id);
@@ -96,8 +100,8 @@ export async function withSettledRefund(enrollment: Enrollment): Promise<Enrollm
 }
 
 /** Unpaid checkouts this learner started, newest first. PayPal may already have paid one of them. */
-export function unpaidFor(learnerEmail: string): Enrollment[] {
-  const key = learnerKey(learnerEmail, course.slug);
+export function unpaidFor(learnerEmail: string, courseSlug: string = course.slug): Enrollment[] {
+  const key = learnerKey(learnerEmail, courseSlug);
   return enrollments()
     .list()
     .filter((e) => e.status === "unpaid" && e.payment?.orderId && learnerKey(e.learnerEmail, e.courseSlug) === key)
@@ -108,8 +112,8 @@ export function unpaidFor(learnerEmail: string): Enrollment[] {
  * A payment PayPal took that we rebuilt from PayPal (a webhook or a reload did it), which the
  * learner hasn't started on. Buying again takes them back to it rather than charging twice.
  */
-export function recoveredUnstartedFor(learnerEmail: string): Enrollment | undefined {
-  const key = learnerKey(learnerEmail, course.slug);
+export function recoveredUnstartedFor(learnerEmail: string, courseSlug: string = course.slug): Enrollment | undefined {
+  const key = learnerKey(learnerEmail, courseSlug);
   return enrollments()
     .list()
     .filter((e) => e.status === "active" && e.payment?.recovered && e.attempts.length === 0 && learnerKey(e.learnerEmail, e.courseSlug) === key)
@@ -133,6 +137,12 @@ function pendingApproval(enrollment: Enrollment): PendingApproval | null {
   return pending ? { id: pending.id, summary: pending.summary, reason: pending.reason, amountValue: pending.amount?.value } : null;
 }
 
+/** A creator's course, as the learner's screens show it. */
+function creatorCourseShown(enrollment: Enrollment): EnrollmentView["creatorCourse"] {
+  const found = enrollment.courseId ? creatorCourses().get(enrollment.courseId) : undefined;
+  return found ? { id: found.id, path: creatorCoursePath(found.id), title: found.rubric.title, rubric: found.rubric } : undefined;
+}
+
 export function viewEnrollment(input: Enrollment): EnrollmentView {
   let enrollment = input;
   // The server restarted while the course team was deciding: no money moved, so ask again.
@@ -144,7 +154,7 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
   const { learnerEmail, ...shown } = enrollment;
   void learnerEmail;
   const payment = enrollment.payment ? { ...enrollment.payment, payerEmail: undefined } : undefined;
-  return { ...shown, payment, approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter), overdue: overdueFor(enrollment) };
+  return { ...shown, payment, creatorCourse: creatorCourseShown(enrollment), approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter), overdue: overdueFor(enrollment) };
 }
 
 /** Paid enrollments, newest first. Test-suite buyers are left out unless asked for. */

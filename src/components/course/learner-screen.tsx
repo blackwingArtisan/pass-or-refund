@@ -12,13 +12,14 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { learnerLineText } from "@/lib/course/contest-rules";
-import { course, lessonForItem, lessons, rubric } from "@/lib/course/content";
+import { course, lessonForItem, lessons } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
 import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
 import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
+import { CourseShownProvider, shownFor, useCourseShown } from "./course-shown";
 import { useCleanMode } from "./clean-mode";
 import { useJudgeMode } from "./judge-mode";
 import { Guarantee } from "./guarantee";
@@ -35,7 +36,7 @@ const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
 /** 402 and 503: the grader is out of credit or down. They stay on screen beside the answers. */
 const GRADER_OUTAGES = [402, 503];
 
-const blankAnswers = () => Object.fromEntries(rubric.questions.map((q) => [q.id, ""]));
+const blankAnswers = (questions: { id: string }[]) => Object.fromEntries(questions.map((q) => [q.id, ""]));
 
 function Notice({ tone, icon, children, testId }: { tone: "info" | "error"; icon: ReactNode; children: ReactNode; testId?: string }) {
   return (
@@ -65,16 +66,18 @@ function Lessons() {
 }
 
 function Quiz({ attemptNumber, grading, busy, problem, onSubmit }: { attemptNumber: number; grading: boolean; busy: boolean; problem: string | null; onSubmit: (answers: Record<string, string>) => void }) {
-  const [answers, setAnswers] = useState(blankAnswers);
+  const shown = useCourseShown();
+  const [answers, setAnswers] = useState(() => blankAnswers(shown.rubric.questions));
   const [judge] = useJudgeMode();
   const clean = useCleanMode();
+  const asked = shown.rubric.questions.length;
   const nothingWritten = Object.values(answers).every((a) => a.trim() === "");
   return (
     <Card id="final-check">
-      <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={`Four questions, 25 points each. Write in your own words. Pass mark ${course.passMark}.`} />
+      <CardHeader title={attemptNumber === 1 ? "Final check" : `Final check, attempt ${attemptNumber}`} description={shown.sample ? `Four questions, 25 points each. Write in your own words. Pass mark ${shown.passMark}.` : `${asked} ${asked === 1 ? "question" : "questions"}, 100 points in all. Write in your own words. Pass mark ${shown.passMark}.`} />
       <CardBody className="space-y-5">
         {/* Prepared answers, only after a judge turns on Judge shortcuts in the For judges menu. */}
-        {judge && !clean ? (
+        {judge && !clean && shown.sample ? (
           <div data-testid="sample-buttons" className="rounded-lg bg-zinc-50 px-3 py-2.5">
             <p className="text-xs text-zinc-600">Fill all four answers with a prepared example, then submit it or edit it first.</p>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -86,20 +89,20 @@ function Quiz({ attemptNumber, grading, busy, problem, onSubmit }: { attemptNumb
             </div>
           </div>
         ) : null}
-        {rubric.questions.map((question, index) => (
+        {shown.rubric.questions.map((question, index) => (
           <Field key={question.id} label={`Question ${index + 1}`} hint={question.text} htmlFor={question.id}>
             <Textarea
               id={question.id}
               data-testid={`answer-${question.id}`}
               rows={4}
               maxLength={MAX_ANSWER_CHARS}
-              value={answers[question.id]}
+              value={answers[question.id] ?? ""}
               disabled={grading}
               onChange={(e) => setAnswers((current) => ({ ...current, [question.id]: e.target.value }))}
             />
           </Field>
         ))}
-        {nothingWritten || everyQuestionAnswered(answers) ? null : <p className="text-sm text-zinc-500">An attempt with a blank answer can&rsquo;t count toward a refund.</p>}
+        {nothingWritten || everyQuestionAnswered(answers, Object.keys(answers)) ? null : <p className="text-sm text-zinc-500">An attempt with a blank answer can&rsquo;t count toward a refund.</p>}
         {problem ? (
           <Notice tone="error" icon={<CircleAlert className="size-4" />} testId="grading-unavailable">
             {problem}
@@ -138,6 +141,7 @@ function NextAttempt({ opensAt, attemptNumber, onSkip }: { opensAt: string; atte
 }
 
 function Certificate({ learnerName, attempt, lock }: { learnerName: string; attempt: Attempt; lock?: EnrollmentView["rubric"] }) {
+  const shown = useCourseShown();
   const date = new Date(attempt.submittedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
     <div data-testid="certificate" className="rounded-2xl border-2 border-brand-200 bg-gradient-to-b from-brand-50 to-white px-6 py-10 text-center">
@@ -145,12 +149,12 @@ function Certificate({ learnerName, attempt, lock }: { learnerName: string; atte
       <p className="mt-3 text-sm font-medium uppercase tracking-wider text-brand">Certificate of completion</p>
       <p className="mt-4 text-3xl font-semibold tracking-tight text-zinc-950">{learnerName}</p>
       <p className="mt-2 text-zinc-600">
-        passed <span className="font-medium text-zinc-900">{course.title}</span> with {attempt.score} out of 100
+        passed <span className="font-medium text-zinc-900">{shown.title}</span> with {attempt.score} out of 100
       </p>
       <p className="mt-1 text-sm text-zinc-500">
-        {date}, by {course.creator}
+        {date}, {shown.byLine}
       </p>
-      <RubricTerms lock={lock} className="mt-4 justify-center text-xs text-zinc-500" />
+      <RubricTerms lock={lock} checkHref={shown.checkHref} className="mt-4 justify-center text-xs text-zinc-500" />
     </div>
   );
 }
@@ -249,7 +253,8 @@ function PayPalDrawer({ refundDebugId, children }: { refundDebugId?: string; chi
 
 /** The study list, one tick per missed item. The button only opens once each one is done. */
 function StudyChecklist({ enrollment, attempt, onTick, onReviewed }: { enrollment: EnrollmentView; attempt: Attempt; onTick: (itemId: string) => void; onReviewed: () => void }) {
-  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id)])));
+  const shown = useCourseShown();
+  const itemText = Object.fromEntries(shown.rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id, shown.rubric)])));
   const missed = missedItems(attempt);
   const ticked = enrollment.studyTicks ?? [];
   const left = missed.filter((item) => !ticked.includes(item.id)).length;
@@ -257,7 +262,7 @@ function StudyChecklist({ enrollment, attempt, onTick, onReviewed }: { enrollmen
     <div className="mt-3 space-y-2">
       <ul className="space-y-1.5">
         {missed.map((item) => {
-          const lesson = lessons.find((l) => l.number === lessonForItem[item.id]);
+          const lesson = shown.sample ? lessons.find((l) => l.number === lessonForItem[item.id]) : undefined;
           return (
             <li key={item.id}>
               <label className="flex items-start gap-2">
@@ -368,17 +373,18 @@ export function LearnerScreen({ id }: { id: string }) {
   const latest = enrollment.attempts.at(-1);
   const past = [...enrollment.attempts].reverse();
   const canAttempt = enrollment.status === "active";
+  const shown = shownFor(enrollment);
 
   return (
-    <>
+    <CourseShownProvider value={shown}>
       <PageHeader
         eyebrow={`Welcome, ${enrollment.learnerName}`}
-        title={course.title}
+        title={shown.title}
         description={
           enrollment.payment?.capturedCents === undefined ? undefined : (
             <span data-testid="receipt" className="flex flex-col gap-1">
               <span>{`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`}</span>
-              <RubricTerms lock={enrollment.rubric} className="text-sm" />
+              <RubricTerms lock={enrollment.rubric} checkHref={shown.checkHref} className="text-sm" />
             </span>
           )
         }
@@ -440,7 +446,7 @@ export function LearnerScreen({ id }: { id: string }) {
             <>
               <AfterFail enrollment={enrollment} attempt={latest} onTick={(item) => update("review", { item })} onReviewed={() => update("review", {})} />
               <ContestLine enrollment={enrollment} onChange={setEnrollment} />
-              <Guarantee />
+              <Guarantee priceCents={enrollment.priceCents} />
             </>
           ) : null}
 
@@ -455,7 +461,7 @@ export function LearnerScreen({ id }: { id: string }) {
             </Card>
           ) : null}
 
-          {canAttempt ? <Lessons /> : null}
+          {canAttempt && shown.sample ? <Lessons /> : null}
           {canAttempt && enrollment.nextAttemptAt ? <NextAttempt opensAt={enrollment.nextAttemptAt} attemptNumber={enrollment.attempts.length + 1} onSkip={() => update("skip-wait", {})} /> : null}
           {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} busy={busy} problem={gradingProblem} onSubmit={submit} /> : null}
         </div>
@@ -466,6 +472,6 @@ export function LearnerScreen({ id }: { id: string }) {
           </PayPalDrawer>
         </div>
       </div>
-    </>
+    </CourseShownProvider>
   );
 }
