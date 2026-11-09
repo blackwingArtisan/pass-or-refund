@@ -41,6 +41,12 @@ People don't trust online courses, because a guarantee usually means small print
 
 **The refund rule, enforced in code (`src/lib/course/policy.ts`).** It takes two completed failing attempts: every question answered, at least 25 points each time, and not a near-copy of an earlier attempt (90% of the same words, in any order). The learner must tick off the first attempt's study list before the second one counts. Trying to instruct the grader gets no credit, is flagged and voids the guarantee. Each learner gets one refund per course, matched on the email typed at checkout and on the PayPal payer from the order: PayPal's account id, or the email PayPal has for the buyer, which a guest card checkout in PayPal's window also gives (a declined or blocked refund doesn't use it up). The purchase screen says "Guarantee: one refund per PayPal account". A refund ends the learner's access to the lessons.
 
+## What is this entry's, and what is new
+
+**This entry versus the shared kit.** The kit is a starter written for several hackathon apps: a typed PayPal layer (mock and sandbox), the Guard (caps, approvals, idempotency, audit log), a Claude agent loop, the live timeline, an AG Grid ledger and a design system. Everything about the guarantee is this entry's own: the rubric locked and fingerprinted at purchase, the sealed grader and its band, the refund rule in code, the refund agent and its tools, the contest, the terms written onto PayPal's order and refund, `/rubric`, `/cohort`, `/creator` and the Server SDK money path.
+
+**What is new here versus other refund-approval agents in this hackathon.** An AI that recommends a refund and a person who approves it is common in this hackathon, so that is not the claim. The claim is what the approval enforces: a guarantee whose terms are locked, public and hashed before the buyer pays (the rubric fingerprint, checkable byte for byte on `/rubric`); written onto PayPal's own records (the order's item line and `invoice_id`, and the refund's `note_to_payer` with both scores); and accountable afterwards, with every decline and every overdue refund published on `/cohort`. None of the refund-agent pages we read describes a refund trigger that is locked and hashed before purchase, or terms written onto the PayPal order.
+
 ## How PayPal is used
 
 All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); there is no live mode in the code. Every call shows on the in-app timeline with its HTTP status and PayPal `debug_id`.
