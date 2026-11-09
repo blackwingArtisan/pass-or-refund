@@ -43,7 +43,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-dvh bg-background">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-zinc-200/80 bg-zinc-50/80 px-4 py-5 backdrop-blur lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 print:!hidden flex-col border-r border-zinc-200/80 bg-zinc-50/80 px-4 py-5 backdrop-blur lg:flex">
         <AppLogo href="/" className="px-2" />
         <div className="mt-8 flex-1">
           <Suspense>
@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <JudgeTools />
       </aside>
 
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-30 flex items-center justify-between print:hidden border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
         <AppLogo href="/" />
         <button onClick={() => setOpen((o) => !o)} className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100" aria-label="Menu">
           {open ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       ) : null}
 
-      <main className="lg:pl-64">
+      <main className="lg:pl-64 print:pl-0">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">{children}</div>
       </main>
     </div>

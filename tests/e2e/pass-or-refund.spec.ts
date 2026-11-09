@@ -185,6 +185,28 @@ const enrollmentOf = async (request: APIRequestContext, id: string) => (await (a
 
 const cohortOf = async (request: APIRequestContext) => (await (await request.get("/api/team/cohort")).json()) as Cohort;
 
+type Receipt = { receiptHash: string; course: { id?: string; title: string }; rubric: { fingerprint: string }; attempts: { outcome: string; attemptHash: string; items: { verdict: string; points: number; of: number }[] }[]; refund: { refundId: string } | null };
+
+async function receiptOf(request: APIRequestContext, id: string): Promise<Receipt> {
+  const res = await request.get(`/api/enrollments/${id}/receipt`);
+  expect(res.ok()).toBe(true);
+  return (await res.json()) as Receipt;
+}
+
+async function streamText(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Pastes a receipt into the public check on /rubric and waits for its verdict. */
+async function checkReceiptOnRubricPage(page: Page, json: string, status: "matches" | "changed") {
+  await page.goto("/rubric#receipt-check");
+  await page.getByTestId("receipt-text").fill(json);
+  await page.getByTestId("receipt-check-submit").click();
+  await expect(page.getByTestId("receipt-check")).toHaveAttribute("data-status", status);
+}
+
 /** Every script and stylesheet the page loads, so a test can read exactly what reached the browser. */
 function watchCode(page: Page) {
   const bodies: Promise<string>[] = [];
@@ -523,6 +545,48 @@ test.describe("the story on the first screen", () => {
     // The sample course's cohort numbers leave creators' courses out.
     const cohort = await cohortOf(request);
     expect(JSON.stringify(cohort)).not.toContain(course.id);
+
+    // The grade receipt names the creator's course, the fingerprint locked at purchase and PayPal's refund id, and checks out.
+    await page.getByTestId("grade-receipt-link").click();
+    await expect(page.getByTestId("receipt-refund-id")).toHaveText(refund!.refundId!);
+    const receipt = await receiptOf(request, id);
+    expect(receipt).toMatchObject({ course: { id: course.id, title }, rubric: { fingerprint: course.fingerprint }, refund: { refundId: refund!.refundId } });
+    expect(receipt.attempts.map((a) => a.outcome)).toEqual(["fail", "fail"]);
+    await checkReceiptOnRubricPage(page, JSON.stringify(receipt), "matches");
+  });
+
+  test("a learner downloads a grade receipt and the public rubric page says matches, or changed once a verdict is edited", { tag: "@live" }, async ({ page, request }) => {
+    await page.goto("/learn/sample_pass");
+    await page.getByTestId("grade-receipt-link").click();
+    await page.waitForURL(/\/learn\/sample_pass\/receipt/);
+    const receipt = await receiptOf(request, "sample_pass");
+    await expect(page.getByTestId("receipt-fingerprint")).toHaveText(receipt.rubric.fingerprint.match(/.{4}/g)!.join(" "));
+    await expect(page.getByTestId("receipt-attempt")).toHaveCount(receipt.attempts.length);
+    await expect(page.getByTestId("receipt-item")).toHaveCount(receipt.attempts[0].items.length);
+    await expect(page.getByTestId("receipt-attempt-hash").first()).toHaveText(receipt.attempts[0].attemptHash.slice(0, 16).match(/.{4}/g)!.join(" "));
+    await expect(page.getByTestId("receipt-print")).toBeVisible();
+
+    // The download is the same receipt, saved as a file.
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("receipt-download").click()]);
+    const saved = JSON.parse(await streamText(await download.createReadStream()));
+    expect(saved.receiptHash).toBe(receipt.receiptHash);
+    await page.getByTestId("grade-receipt").screenshot({ path: "screenshots/grade-receipt.png" });
+
+    // Opened as a file on the public check: matches.
+    await page.goto("/rubric");
+    await page.getByTestId("receipt-file").setInputFiles({ name: "grade-receipt.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(saved)) });
+    await expect(page.getByTestId("receipt-text")).not.toHaveValue("");
+    await page.getByTestId("receipt-check-submit").click();
+    await expect(page.getByTestId("receipt-check")).toHaveAttribute("data-status", "matches");
+    await expect(page.getByTestId("receipt-verdict")).toHaveText("Matches");
+
+    // One verdict raised to "met": changed, and it says what.
+    const edited = structuredClone(saved);
+    const line = edited.attempts[0].items.find((i: { verdict: string }) => i.verdict !== "met");
+    Object.assign(line, { verdict: "met", points: line.of });
+    await checkReceiptOnRubricPage(page, JSON.stringify(edited), "changed");
+    await expect(page.getByTestId("receipt-problems")).toContainText("Attempt 1 differs from the graded record.");
+    await page.getByTestId("receipt-check").screenshot({ path: "screenshots/grade-receipt-changed.png" });
   });
 
   test("a creator sets up their own rubric on /creator: plain-word fixes, a fingerprint that changes with the words, and a link graded against it", { tag: "@live" }, async ({ page }) => {

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { CircleAlert, CircleCheck, Fingerprint } from "lucide-react";
+import { ReceiptCheckForm } from "@/components/course/receipt-check";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Card, CardBody, CardHeader } from "@/components/ui";
 import { checkFingerprint, rubricFingerprint, rubricOnSaleNow } from "@/lib/course/rubric-lock";
@@ -82,6 +83,7 @@ export default function RubricPage({ searchParams }: { searchParams: Search }) {
           </p>
         </CardBody>
       </Card>
+      <ReceiptCheckForm />
       <div className="space-y-4">
         {rubric.questions.map((q, i) => (
           <Card key={q.id} data-testid="public-rubric-question">
