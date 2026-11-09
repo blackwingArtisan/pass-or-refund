@@ -1,6 +1,7 @@
 import { Badge, type Tone } from "@/components/ui";
 import { learnerLineText } from "@/lib/course/contest-rules";
 import { lessonForItem, lessons } from "@/lib/course/content";
+import { decidingItemId } from "@/lib/course/screen-order";
 import { useCourseShown } from "./course-shown";
 import type { Attempt } from "@/lib/course/types";
 import type { Outcome } from "@/lib/grading/decide";
@@ -18,7 +19,7 @@ const OUTCOME: Record<Outcome, { label: string; tone: Tone }> = {
   review: { label: "Under review", tone: "warning" },
 };
 
-function ItemRow({ item, text, points }: { item: ScoredItem; text: string; points: number }) {
+function ItemRow({ item, text, points, quoted }: { item: ScoredItem; text: string; points: number; quoted: boolean }) {
   const verdict = VERDICT[item.verdict];
   return (
     <li data-testid={`item-${item.id}`} data-verdict={item.verdict} className="py-2.5">
@@ -31,12 +32,16 @@ function ItemRow({ item, text, points }: { item: ScoredItem; text: string; point
           <Badge tone={verdict.tone}>{verdict.label}</Badge>
         </span>
       </div>
-      {item.quote ? <blockquote className="mt-1 border-l-2 border-zinc-200 pl-3 text-sm italic text-zinc-600">&ldquo;{item.quote}&rdquo;</blockquote> : null}
+      {quoted && item.quote ? (
+        <blockquote data-testid="deciding-quote" className="mt-1 border-l-2 border-brand-200 pl-3 text-sm italic text-zinc-600">
+          &ldquo;{item.quote}&rdquo;
+        </blockquote>
+      ) : null}
     </li>
   );
 }
 
-/** Every rubric item with its verdict and quote, then the study list. */
+/** Each question as a result: every rubric line with its verdict, the one deciding quote, then the study list. */
 export function AttemptResult({ attempt }: { attempt: Attempt }) {
   const run = attempt.runs[attempt.shownRun];
   const outcome = OUTCOME[attempt.outcome];
@@ -85,6 +90,9 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
       <div className="space-y-4">
         {rubric.questions.map((question, index) => {
           const caps = question.caps.filter((cap) => run.caps.some((c) => c.id === cap.id && c.triggered));
+          const scoredHere = run.items.filter((i) => question.items.some((item) => item.id === i.id));
+          const deciding = decidingItemId(scoredHere, Object.fromEntries(question.items.map((item) => [item.id, item.points])));
+          const otherQuotes = scoredHere.filter((i) => i.quote && i.id !== deciding);
           return (
             <div key={question.id} data-testid={`question-${attempt.number}-${question.id}`} className="rounded-lg border border-zinc-200 px-4 py-3">
               <div className="flex items-baseline justify-between gap-3">
@@ -96,9 +104,25 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
               <ul className="divide-y divide-zinc-100">
                 {question.items.map((item) => {
                   const scored = run.items.find((i) => i.id === item.id);
-                  return scored ? <ItemRow key={item.id} item={scored} text={learnerLineText(item.id, rubric)} points={item.points} /> : null;
+                  return scored ? <ItemRow key={item.id} item={scored} text={learnerLineText(item.id, rubric)} points={item.points} quoted={scored.id === deciding} /> : null;
                 })}
               </ul>
+              <details data-testid={`answer-details-${attempt.number}-${question.id}`} className="group mt-1 text-sm">
+                <summary className="cursor-pointer select-none text-xs font-medium text-brand hover:underline">Show every quote and my answer</summary>
+                {otherQuotes.length > 0 ? (
+                  <ul className="mt-2 space-y-1.5 text-zinc-600">
+                    {otherQuotes.map((item) => (
+                      <li key={item.id}>
+                        <span className="text-zinc-800">{learnerLineText(item.id, rubric)}:</span> <q className="italic">{item.quote}</q>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="mt-2 text-xs font-medium text-zinc-500">Your answer</p>
+                <p data-testid={`my-answer-${attempt.number}-${question.id}`} className="mt-1 whitespace-pre-wrap rounded-md bg-zinc-50 px-3 py-2 text-zinc-700">
+                  {attempt.answers[question.id]?.trim() || "(left blank)"}
+                </p>
+              </details>
               {caps.map((cap) => (
                 <p key={cap.id} className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Capped at {cap.max} points: {cap.text}.

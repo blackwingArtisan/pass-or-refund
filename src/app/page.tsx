@@ -1,7 +1,7 @@
-import { Hero, SiteFooter, SiteHeader, StopsGaming } from "@/components/marketing/landing";
+import { ForCreators, Hero, SiteFooter, SiteHeader, StopsGaming } from "@/components/marketing/landing";
 import { Story } from "@/components/marketing/story";
 
-/** About two screens at 1440 wide: the product, why it matters, and why it can't be gamed. */
+/** One idea per screen: the refund itself, why it matters, what it costs a creator, then how gaming is stopped. */
 export default function LandingPage() {
   return (
     <>
@@ -9,6 +9,7 @@ export default function LandingPage() {
       <main>
         <Hero />
         <Story />
+        <ForCreators />
         <StopsGaming />
       </main>
       <SiteFooter />

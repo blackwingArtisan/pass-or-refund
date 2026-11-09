@@ -286,7 +286,7 @@ test.describe("the course team in two clicks", () => {
     await page.goto("/");
     expect((await judge.request.get("/api/team")).status()).toBe(401);
     await page.getByTestId("open-team-view").click();
-    await page.waitForURL(/\/team$/);
+    await page.waitForURL(/\/team(#approvals)?$/);
     await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
     await expect(page.getByTestId("team-passcode-form")).toHaveCount(0);
     const team = await judge.request.get("/api/team");
@@ -302,6 +302,87 @@ test.describe("the course team in two clicks", () => {
       expect((await stranger.request.get("/api/team")).status()).toBe(401);
     }
     await stranger.close();
+  });
+});
+
+test.describe("the course team in one click", () => {
+  test("after two fails, one click on For judges opens /team on the approvals list with the refund at the top", { tag: "@live" }, async ({ page, request, browser }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000); // real grading on the hosted site
+    const id = await buy(page, request, "Jules Judge");
+    await failTwice(page);
+    const baseURL = test.info().project.use.baseURL!;
+    for (const screen of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      // A judge's fresh browser: no team cookie, only the test-run cookie that keeps suite learners off real lists.
+      const judge = await browser.newContext({ baseURL, viewport: screen, storageState: { cookies: testRunState(baseURL).cookies, origins: [] } });
+      const team = await judge.newPage();
+      await team.goto("/");
+      await team.getByTestId("open-team-view").click();
+      await team.waitForURL(/\/team#approvals$/);
+      const approvals = team.getByTestId("team-approvals");
+      const card = approvals.getByTestId(`enrollment-${id}`);
+      await expect(card.getByTestId("approve-button")).toBeVisible({ timeout: 90_000 });
+      await expect(team.getByTestId("team-passcode-form")).toHaveCount(0);
+      // The list is what opens: its heading sits in the first screen, above everyone else.
+      const box = (await approvals.boundingBox())!;
+      expect(box.y, `approvals top at ${screen.width}`).toBeLessThan(screen.height / 2);
+      const others = team.getByTestId("team-everyone-else");
+      if (await others.count()) expect((await others.boundingBox())!.y).toBeGreaterThan(box.y);
+      await team.screenshot({ path: `screenshots/team-approvals-${screen.width}.png` });
+      await judge.close();
+    }
+    // Nothing is left waiting: a decline moves no money.
+    await unlockTeam(page.request);
+    await page.goto("/team");
+    const card = page.getByTestId(`enrollment-${id}`);
+    await card.getByTestId("decline-button").click();
+    await card.getByTestId("decline-note").fill("Closed by the one-click team test");
+    await card.getByTestId("decline-button").click();
+    await expect(card.getByTestId("refund-stopped")).toContainText("Declined", { timeout: 30_000 });
+    expect((await enrollmentOf(request, id)).refund?.refundId).toBeUndefined();
+  });
+
+  test("the landing shows one idea per screen, and the graded result leads with one quote per question", { tag: "@live" }, async ({ page, request }) => {
+    for (const screen of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(screen);
+      await page.goto("/");
+      const card = page.getByTestId("hero-refund-card");
+      await expect(card).toContainText("Refund issued");
+      await expect(card).toContainText("COMPLETED");
+      await expect(card).toContainText(/[0-9A-Z]{17}/);
+      await expect(page.getByTestId("for-creators").getByTestId("creator-numbers").locator("dd")).toHaveCount(3);
+      // The six rules wait behind one expander.
+      await expect(page.getByTestId("anti-gaming")).toBeHidden();
+      await page.getByTestId("gaming-details").locator("summary").click();
+      await expect(page.getByTestId("anti-gaming").locator("li")).toHaveCount(6);
+      await page.screenshot({ path: `screenshots/landing-${screen.width}.png`, fullPage: true });
+    }
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await buy(page, request, "Rosa Result");
+    await attempt(page, "fail1", 1);
+    const result = page.getByTestId("attempt-1");
+    // Each question shows at most one quote; the rest, and the answer, are one click away.
+    const questions = result.locator('[data-testid^="question-1-"]');
+    const count = await questions.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) expect(await questions.nth(i).getByTestId("deciding-quote").count()).toBeLessThanOrEqual(1);
+    await expect(result.getByTestId("deciding-quote").first()).toBeVisible();
+    const answer = result.locator('[data-testid^="my-answer-1-"]').first();
+    await expect(answer).toBeHidden();
+    await result.getByText("Show every quote and my answer").first().click();
+    await expect(answer).toBeVisible();
+    expect((await answer.innerText()).length).toBeGreaterThan(20);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 });
+      await result.scrollIntoViewIfNeeded();
+      await result.screenshot({ path: `screenshots/graded-result-${width}.png` });
+    }
   });
 });
 

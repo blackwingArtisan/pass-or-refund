@@ -27,8 +27,7 @@ export const appConfig = {
   landing: {
     eyebrow: "For online course creators",
     headline: "Sell your course with a guarantee that pays out.",
-    subheadline:
-      "Your buyers have been burned by small print. Offer a refund tied to whether they learned: Claude grades the final check against your public rubric, and a learner who fails twice gets their money back through PayPal, after a person on your team approves.",
+    subheadline: "Your buyers have been burned by small print. Make the refund rule public: two failed final checks, graded by Claude on your rubric, and PayPal pays them back once you approve.",
     primaryCta: { label: "Try it as a learner", href: "/course" },
     secondaryCta: { label: "See the sample cohort", href: "/cohort" },
     steps: [

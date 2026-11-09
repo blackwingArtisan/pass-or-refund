@@ -12,5 +12,5 @@ export const POST = route(async (req) => {
   const passcode = String(form?.get("passcode") ?? "").slice(0, 100);
   if (!passcodeMatches(passcode)) return new Response(null, { status: 303, headers: { Location: "/team" } });
   const secure = req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
-  return new Response(null, { status: 303, headers: { Location: "/team", "Set-Cookie": teamCookie(secure) } });
+  return new Response(null, { status: 303, headers: { Location: "/team#approvals", "Set-Cookie": teamCookie(secure) } });
 });
