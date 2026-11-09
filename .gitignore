@@ -47,6 +47,8 @@ next-env.d.ts
 .next-*/
 videos/*.webm
 videos/*.mp4
+videos/voiceover.json
+videos/demo-voiceover.txt
 test-results/
 test-results-*/
 playwright-report/

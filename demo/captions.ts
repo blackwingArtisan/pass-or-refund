@@ -136,6 +136,10 @@ export class DemoCuts {
   private get now() {
     return (Date.now() - this.start) / 1000;
   }
+  /** Seconds into the main recording: for stretches the edit moves (a flash-forward). */
+  get clock() {
+    return this.now;
+  }
   /** Stops keeping the main video here; `keep` seconds of what follows stay in. */
   pause(keep = 1.2) {
     if (this.paused) return;
@@ -182,8 +186,12 @@ export class DemoCuts {
   }
   /** How long the edited cut runs so far, counting the main video up to now. */
   get editedSeconds() {
+    return Math.round(this.editedExact);
+  }
+  /** The same, unrounded: voiceover lines are timed with it. */
+  get editedExact() {
     const kept = this.parts.reduce((sum, p) => sum + ((p.to ?? p.from) - p.from), 0);
-    return Math.round(kept + (this.paused ? 0 : this.now - this.keptFrom));
+    return kept + (this.paused ? 0 : this.now - this.keptFrom);
   }
   finish() {
     if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, ...this.zoomed() });
