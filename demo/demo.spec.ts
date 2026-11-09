@@ -253,11 +253,13 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await sleep(400);
   cuts.pause(0.8);
   await page.getByTestId("attempt-1").waitFor({ timeout: 150_000 });
-  const question = page.getByTestId("question-1-q1");
+  // Live grading may quote nothing on a weak first answer, so show the first question that has a quote.
+  const question = page.locator('[data-testid^="question-1-"]').filter({ has: page.locator("blockquote") }).first();
+  await question.waitFor({ timeout: 30_000 });
   await centre(question);
   cuts.resume();
   const quote = question.locator("blockquote").first();
-  await quote.waitFor();
+  await quote.waitFor({ timeout: 30_000 });
   cuts.zoom(await zoomOn(page, quote, 1.6));
   await say(page, `${grader} marks every rubric line, and backs each mark with a quote from Jordan's own answer.`, { ms: 4000 });
   cuts.unzoom();
