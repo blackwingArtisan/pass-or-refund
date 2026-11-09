@@ -1,26 +1,30 @@
 /**
  * DEMO VIDEO (npm run demo:record, then npm run demo:edit). Cut 7: one money spine, about six ideas,
  * 110 to 125 s edited.
- *   1. the pain, narrated from the first frame over a slow push in on the landing, 5 s: course buyers
- *      can't trust a guarantee
+ *   1. the pain, narrated from the first frame, 5 s: a real buyer's words from the landing's sourced
+ *      "Why it matters" cards ("it was quickly DENIED"), under a slow push in
  *   3. the course page: the guarantee is code, its terms beside the pay button
  *   4. PayPal's own window: its cart held on the item line with the rubric fingerprint (the first time
  *      the fingerprint is shown), then the sandbox test card and the pay click
  *   5. paid: PayPal captured it, the rubric locked to the order
  *   6. try 1: one answer typed, zoomed, then a short caption for the grading, the wait cut
- *   7. graded: one rubric line, its verdict beside Jordan's quoted words, the score code added, and
- *      the attempt summary's tally and biggest loss
+ *   7. graded: one rubric line, its verdict beside Jordan's quoted words, and the score code added
+ *   7b. Jordan contests one line, once; on /team the second reader quotes both sides and recommends,
+ *      and a person rules (about 10 s)
  *   8. one short line: retakes open a day later; the demo skips the wait
  *  10. try 2: short again, so the refund is due, and the refund agent's note to Jordan
  *  11. the course team: only a person approves. The click is held on camera until PayPal reports
  *      the refund COMPLETED
- *  12. Jordan's refund card: the amount back, and PayPal's own note on the refund quoting both scores,
- *      then the What PayPal did drawer's debug_id (and the webhook line, on the hosted app)
+ *  12. Jordan's refund card: the amount back, and PayPal's own note on the refund quoting both scores
  *  12c. /verify: the order read back from PayPal carries the same fingerprint (the second time), then
  *      one word of a copy of the rubric changed, and it no longer matches
- *  14. the close, about 5 s: the creator's earnings card on /cohort, every figure read from PayPal
- * Left out on purpose: the contest and second reader, the gaming rules, the injection flag, /rubric's
- * ticks and /creator. They are all still in the app.
+ *  14. the close, about 6 s: the creator's earnings card on /cohort, every figure read from PayPal.
+ *      Off camera, before the story, a second learner (Sam) buys in the sandbox and passes, so the card
+ *      shows a sale the creator keeps beside Jordan's refund, not a $0 net.
+ *  15. an end card, about 4 s: the address, and what runs where
+ * Every beat also checks the screen never says the refund ran without a person's approval.
+ * Left out on purpose: the gaming rules, the injection flag, /rubric's ticks, /creator and the debug_id
+ * drawer. They are all still in the app.
  *
  * The voiceover is separate from the captions: videos/voiceover.json is [{ shot, at, text }] with
  * `at` in seconds of the edited video (after demo-edit.json's parts are joined), for
@@ -41,7 +45,7 @@ import fs from "node:fs";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { payInPayPalWindow } from "../tests/e2e/paypal-popup";
 import { samples } from "../src/lib/course/samples";
-import { caption, centre, DemoClock, DemoCuts, highlight, zoomOn, type Zoom } from "./captions";
+import { caption, centre, DemoClock, DemoCuts, highlight, titleCard, zoomOn, type Zoom } from "./captions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The edited cut's target, and the hard limit. */
@@ -58,6 +62,8 @@ const FORM_SECONDS = 2.5;
 const PAYPAL_CLIP_SECONDS = CART_SECONDS + FORM_SECONDS;
 /** The earnings card that closes the video. */
 const CLOSE_SECONDS = 6;
+/** The end card. */
+const END_CARD_SECONDS = 4.2;
 /** How fast the narrator reads: a voiceover line must fit before the next one at this pace. */
 const WORDS_PER_SECOND = 2.6;
 const CHARS_PER_SECOND = 15;
@@ -79,6 +85,16 @@ async function requireLive(on: Page, where: string) {
   expect(hit, `DEMO_REQUIRE_LIVE: "${hit?.[0]}" on screen at ${where}: …${around}…`).toBeNull();
 }
 
+/** A screen that says the refund ran without a person's approval: never true here, so it stops the take. */
+const DENIES_APPROVAL = /without (pausing|a person's approval|approval|human approval)|skipped (the )?approval/i;
+
+async function noApprovalDenied(on: Page, where: string) {
+  const text = await on.locator("body").innerText();
+  const hit = DENIES_APPROVAL.exec(text);
+  const around = hit ? text.slice(Math.max(0, hit.index - 60), hit.index + 60).replace(/\s+/g, " ") : "";
+  expect(hit, `on screen at ${where}, contradicting the approval: …${around}…`).toBeNull();
+}
+
 /** Ticks the study list, so the next attempt counts. */
 async function study(page: Page) {
   // The hosted site renders and saves ticks more slowly than a local build, so wait for each step.
@@ -93,14 +109,36 @@ async function study(page: Page) {
   await page.getByTestId("study-list-reviewed").waitFor({ timeout: 30_000 });
 }
 
-/** The course team's passcode, read off the home page's judge box in a separate, non-clean browser. */
-async function teamPasscode(browser: Browser, baseURL: string) {
+/**
+ * Set up off camera, in a separate, non-clean browser: the course team's passcode, read off the home
+ * page's judge box, and a second learner who buys the course in PayPal's sandbox and passes the final
+ * check, so the closing earnings card shows a sale the creator keeps beside Jordan's refund. Both
+ * sales are real orders, read back from PayPal on the card.
+ */
+async function offCamera(browser: Browser, baseURL: string, sandbox: boolean) {
+  // Not clean: the judge box has the passcode, and the prepared answers sit behind the judges' switch.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "por_judge", value: "1" }] }] } });
   const page = await context.newPage();
   await page.goto("/");
   const passcode = (await page.getByTestId("team-passcode-shown").innerText()).trim();
+  // ?test-card=1 shows the server-side test card button, which only tests and this side learner use.
+  await page.goto(sandbox ? "/course?test-card=1" : "/course");
+  await page.getByTestId("learner-name").filter({ visible: true }).fill("Sam Ortiz");
+  await page.getByTestId("learner-email").filter({ visible: true }).fill(email("Sam Ortiz"));
+  if (sandbox) await page.getByTestId("sandbox-test-card").click();
+  else {
+    await page.getByTestId("simulate-paypal-approval").click();
+    await page.getByTestId("mock-approve").click();
+  }
+  await page.waitForURL(/\/learn\/en_/, { timeout: 90_000 });
+  const passer = page.url().split("/learn/")[1];
+  await page.getByTestId("sample-pass").click();
+  await page.getByTestId("submit-attempt").click();
+  await page.getByTestId("attempt-1").waitFor({ timeout: 150_000 });
+  await expect(page.getByTestId("certificate"), "the second learner passes the final check and keeps the course").toBeVisible({ timeout: 30_000 });
+  const { payment } = (await (await page.request.get(`/api/enrollments/${passer}`)).json()) as { payment: { orderId: string } };
   await context.close();
-  return passcode;
+  return { passcode, passerOrder: payment.orderId };
 }
 
 /** Signs the recorded browser in as the course team, off screen. */
@@ -159,13 +197,15 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   // Likewise PayPal: with mock PayPal no money moves, and neither the captions nor the voice say it did.
   const paypal = sandbox ? "PayPal" : "the payment stand-in";
   const paypals = sandbox ? "PayPal's" : "the stand-in's";
-  await unlockTeam(page, await teamPasscode(browser, baseURL!));
+  const side = await offCamera(browser, baseURL!, sandbox);
+  await unlockTeam(page, side.passcode);
 
   const clock = new DemoClock(600);
   const beat = async (label: string) => {
     clock.check(label);
     console.log(`[demo]   edited cut at ${cuts.editedSeconds}s`);
     await requireLive(page, label);
+    await noApprovalDenied(page, label);
   };
   let popup: Page | undefined;
   /** The captions, at their times in the edited cut. */
@@ -184,15 +224,17 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     return caption(on, captionText, { ...opts, ms });
   };
 
-  // 1. The pain, from the first frame, over a slow push in on the landing
-  await page.goto("/");
-  const hero = page.getByTestId("hero-title");
-  await hero.waitFor();
+  // 1. The pain, from the first frame: a real buyer's words, sourced on the landing, under a slow push in
+  await page.goto("/#why");
+  const pain = page.getByTestId("story-pains").locator("li").first();
+  await pain.waitFor();
+  const quoted = await pain.innerText();
+  expect(quoted, "the opener's quote is the landing's own, with its source").toContain("it was quickly DENIED");
   const landingFrom = cuts.editedExact;
   cuts.resume();
-  cuts.zoom(await zoomAbove(page, hero, 1.15));
-  const pulse = highlight(page, hero, 2400);
-  await say(page, 1, "Pass or Refund: a course guarantee that pays out.", "Course buyers can't trust guarantees: the terms move, and refunds stall.", { ms: LANDING_SECONDS * 1000 });
+  cuts.zoom(await zoomAbove(page, pain, 1.3));
+  const pulse = highlight(page, pain, 2400);
+  await say(page, 1, "A course buyer's refund: “it was quickly DENIED”.", "A course buyer asked for the guaranteed refund. It was quickly denied.", { ms: LANDING_SECONDS * 1000 });
   await pulse;
   cuts.pause(0.1);
   cuts.unzoom();
@@ -325,16 +367,53 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await centre(headline);
   await highlight(page, headline, 600);
   await say(page, 7, `Code adds the points: ${firstScore} of 100, pass mark ${passMark}.`, `Code, not the model, adds the points: ${firstScore} of a hundred. The pass mark is ${passMark}.`);
-  // The attempt summary: how the rubric lines came out, and where the most points went
-  const tally = page.getByTestId("attempt-summary-tally");
-  // The line reads "3 met · 4 partial · 7 missed. Biggest loss: Question 4 (5/25)."; each part without its joining stops.
-  const bare = (text: string) => text.replace(/^[\s.]+|[\s.]+$/g, "");
-  const tallyText = bare(await tally.innerText());
-  const loss = page.getByTestId("attempt-summary-loss");
-  const lossText = (await loss.isVisible()) ? bare(await loss.innerText()) : "";
-  await highlight(page, lossText ? loss : tally, 700);
-  await say(page, 7, lossText ? `${tallyText}. ${lossText}.` : `${tallyText}.`, `Rubric lines: ${tallyText.replace(/ · /g, ", ")}. Jordan sees where the points went.`, { ms: 5000 });
   await beat("first grade");
+
+  // 7b. Jordan contests one line, once; the second reader quotes both sides and recommends; a person rules
+  cuts.pause(0.2);
+  const firstAttempt = ((await (await page.request.get(`/api/enrollments/${enrollmentId}`)).json()) as { attempts: { answers: Record<string, string>; shownRun: number; runs: { items: { id: string; verdict: string }[]; caps: { id: string; triggered: boolean }[] }[] }[] }).attempts[0];
+  const firstRun = firstAttempt.runs[firstAttempt.shownRun];
+  const capped = new Set(firstRun.caps.filter((c) => c.triggered).map((c) => c.id.split("-")[0]));
+  // A line from a question no cap held down, where Jordan's answer has words to quote.
+  const contested = firstRun.items.find((item) => item.verdict !== "met" && !capped.has(item.id.replace(/[a-z]$/, "")) && firstAttempt.answers[item.id.replace(/[a-z]$/, "")]?.trim()) ?? firstRun.items.find((item) => item.verdict !== "met")!;
+  const ownWords = (firstAttempt.answers[contested.id.replace(/[a-z]$/, "")] ?? "").split(/[.,]/)[0].trim();
+  const contestBox = page.getByTestId("contest-line");
+  await contestBox.locator("summary").click();
+  await contestBox.getByTestId("contest-item").selectOption(contested.id);
+  await contestBox.getByTestId("contest-note").fill(`My answer says "${ownWords}", so it does what the line asks.`);
+  await centre(contestBox);
+  cuts.resume();
+  await highlight(page, contestBox, 600);
+  await contestBox.getByTestId("contest-send").click();
+  await page.getByTestId("contest-status").waitFor({ timeout: 30_000 });
+  await say(page, 7, "Jordan contests one line, once, quoting their own answer.", "Jordan thinks one line was marked wrong, and contests it, once.", { ms: 4000 });
+  cuts.pause(0.2);
+  await page.goto("/team");
+  const jordanCard = page.getByTestId(`enrollment-${enrollmentId}`);
+  const reader = jordanCard.getByTestId("second-reader");
+  await reader.waitFor({ timeout: 120_000 });
+  const recommends = (await reader.getAttribute("data-recommendation")) === "uphold";
+  await jordanCard.getByTestId("contest-ruling-note").fill(recommends ? "Agreed: the answer says it." : "The answer doesn't say what the line asks.");
+  await centre(jordanCard.getByTestId("team-contest"));
+  const readerZoom = await zoomAbove(page, reader, 1.25);
+  cuts.resume();
+  cuts.zoom(readerZoom);
+  await highlight(page, reader, 900);
+  const secondReader = aiLive ? "Claude" : "The second reader";
+  const ruleFrom = Date.now();
+  const readerLine = `${secondReader} quotes both sides and recommends. A person rules; the grade only changes if they uphold it.`;
+  await say(page, 7, `${secondReader} recommends: ${recommends ? "uphold" : "let it stand"}. A person rules.`, readerLine, { wait: false });
+  await sleep(2600);
+  await highlight(page, jordanCard.getByTestId(recommends ? "contest-uphold" : "contest-reject"), 500);
+  await jordanCard.getByTestId(recommends ? "contest-uphold" : "contest-reject").click();
+  await jordanCard.getByTestId("team-contest-done").waitFor({ timeout: 30_000 });
+  await sleep(Math.max(0, (readSeconds(readerLine) + 0.3) * 1000 - (Date.now() - ruleFrom)));
+  cuts.unzoom();
+  await beat("contest");
+  cuts.pause(0.2);
+  await page.goto(jordan);
+  // An upheld line adds its points to attempt 1, so the score PayPal's note quotes is read again here.
+  const firstNow = (await page.getByTestId("score-1").innerText()).split("/")[0].trim();
 
   // 8. One short line: the retake opens a day later, after the study list; the demo skips the wait
   cuts.pause(0.2);
@@ -373,7 +452,6 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   // 11. The course team: only a person approves, and the click is held until PayPal reports the refund COMPLETED
   cuts.pause(0.3);
   await page.goto("/team");
-  const jordanCard = page.getByTestId(`enrollment-${enrollmentId}`);
   if (reviewFirst) {
     // The person who looked sends it on (off camera); the agent then proposes the refund for approval.
     const review = jordanCard.getByTestId("refund-review");
@@ -416,7 +494,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const amount = await page.getByTestId("refund-amount").innerText();
   const note = page.getByTestId("refund-paypal-note");
   const noteText = (await note.isVisible()) ? await note.innerText() : "";
-  const quotesBoth = noteText.includes(firstScore) && noteText.includes(secondScore);
+  const quotesBoth = noteText.includes(firstNow) && noteText.includes(secondScore);
   if (sandbox) expect(quotesBoth, `PayPal's note_to_payer quotes both scores: "${noteText}"`).toBe(true);
   await centre(issued);
   const issuedZoom = await zoomOn(page, issued, 1.3);
@@ -426,17 +504,11 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await say(
     page,
     12,
-    quotesBoth ? `${amount} back. ${paypals} note on the refund: ${firstScore} and ${secondScore}, pass mark ${passMark}.` : `Refund issued: ${amount} back to Jordan.`,
+    quotesBoth ? `${amount} back. ${paypals} note on the refund: ${firstNow} and ${secondScore}, pass mark ${passMark}.` : `Refund issued: ${amount} back to Jordan.`,
     quotesBoth ? `Jordan gets ${amount} back. ${paypals} own note on the refund quotes both scores.` : `Jordan gets ${amount} back, with ${paypals} refund id.`,
     { ms: 7000 },
   );
   cuts.unzoom();
-  await page.getByTestId("paypal-drawer").filter({ visible: true }).locator("summary").click();
-  const debugId = page.getByTestId("refund-debug-id");
-  await expect(debugId).toBeVisible();
-  await centre(debugId);
-  await highlight(page, debugId, 600);
-  await say(page, 12, `Every ${sandbox ? "PayPal" : "payment"} call is one click away, down to the debug_id.`, webhookShown ? "PayPal's webhook confirmed it. Every call is one click away, down to the debug id." : `Every ${sandbox ? "PayPal" : "payment"} call is one click away, down to the debug id.`, { ms: 5000 });
   await beat("refunded");
 
   // 12c. /verify: the order read back from PayPal carries the same fingerprint; then one word changed, and no match
@@ -455,7 +527,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   cuts.resume();
   cuts.zoom(verifyZoom);
   await highlight(page, fromPayPal, 1200);
-  await say(page, 12, `Read back from ${paypals} order: fingerprint ${verifiedFingerprint}.`, `Anyone can check on /verify: ${paypals} order gives back the same fingerprint.`, { ms: 6000 });
+  await say(page, 12, `From ${paypals} order: fingerprint ${verifiedFingerprint}.`, `Anyone can check on /verify: ${paypals} order gives back the same fingerprint.`, { ms: 4500 });
   cuts.unzoom();
   // The lock catches a change: one line of a copy of the rubric, edited in the browser
   cuts.pause(0.1);
@@ -484,10 +556,24 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const earnings = page.getByRole("main").getByTestId("earnings-card");
   await earnings.getByTestId("earnings-sold").waitFor({ timeout: 90_000 });
   const [sold, refunded, net] = await Promise.all(["earnings-sold", "earnings-refunded", "earnings-net"].map((id) => earnings.getByTestId(id).innerText()));
+  // "2 sales" and "1 refund", the hints under Sold and Refunded.
+  const [sales, refunds] = await Promise.all(["earnings-sold", "earnings-refunded"].map(async (id) => (await earnings.getByTestId(id).locator("xpath=following-sibling::p").innerText()).trim()));
+  // The passing learner's order is one the card read back, and the creator keeps money: not a $0 close.
+  const read = (await (await page.request.get("/api/creator/courses/sample/earnings")).json()) as { netCents: number; orders: { orderId: string }[] };
+  expect(read.orders.map((o) => o.orderId), "the passing learner's order is on the card").toContain(side.passerOrder);
+  expect(read.netCents, "the close shows money the creator keeps").toBeGreaterThan(0);
   await centre(earnings);
   cuts.resume();
   await highlight(page, earnings, 1200);
-  await say(page, 14, `What the course earned, read from ${paypal}: ${sold} sold, ${refunded} refunded, ${net} net.`, `And the creator's earnings, read from ${paypal}: ${sold} sold, ${refunded} refunded.`, { ms: CLOSE_SECONDS * 1000 });
+  await say(page, 14, `What the course earned, read from ${paypal}: ${sold} sold, ${refunded} refunded, ${net} net.`, `And the creator's earnings, read from ${paypal}: ${sales}, ${refunds}, ${net} net.`, { ms: CLOSE_SECONDS * 1000 });
+  await beat("earnings");
+
+  // 15. The end card: what runs where, and the address to try it
+  const stack = ["PayPal Orders v2", "Payments v2", "Webhooks", "Server SDK", ...(aiLive ? ["Claude Sonnet and Haiku"] : []), "sandbox only"].join(" · ");
+  const host = new URL(baseURL!).host;
+  script.push({ at: at(), text: `Pass or Refund · ${host}` });
+  voiceover.push({ shot: 15, at: at(), text: "Pass or Refund: the terms on PayPal, the refund from a person." });
+  await titleCard(page, "Pass or Refund", `${host}<br>${stack}`, END_CARD_SECONDS * 1000);
   await beat("end");
 
   // The cut. A cut without PayPal's window (mock PayPal) still leaves room for it.
