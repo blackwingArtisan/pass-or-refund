@@ -72,6 +72,24 @@ export interface Contest {
   /** Taking the retake first withdraws a contest nobody has ruled on yet. */
   withdrawnAt?: string;
   ruling?: ContestRuling;
+  /** Claude's recommendation to the person ruling. It never changes the grade by itself. */
+  secondReader?: ContestRecommendation;
+}
+
+/** The second reader's recommendation on a contest: uphold or let the grade stand, one reason, both sides quoted. */
+export interface ContestRecommendation {
+  recommendation?: "uphold" | "stand";
+  reason?: string;
+  /** From the learner's note, checked by code to be in it. Empty when the model's quote wasn't. */
+  learnerQuote?: string;
+  /** From the learner's answer, checked by code to be in it. */
+  answerQuote?: string;
+  graderQuote: string;
+  model?: string;
+  mocked?: boolean;
+  /** Set instead of a recommendation when the model couldn't read the contest. */
+  error?: string;
+  at: string;
 }
 
 export interface ContestRuling {
@@ -82,6 +100,8 @@ export interface ContestRuling {
   at: string;
   scoreBefore: number;
   scoreAfter: number;
+  /** What the second reader had recommended when the person ruled, if it had. The ruling is the person's either way. */
+  readerRecommended?: "uphold" | "stand";
 }
 
 export interface Payment {
