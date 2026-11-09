@@ -47,9 +47,9 @@ export function describePolicy(p: GuardPolicy): string {
   return [
     `Single action cap: ${p.maxPerAction} ${p.currency}.`,
     `Daily cap across all agent actions: ${p.maxPerDay} ${p.currency}.`,
-    `Money movements above ${p.approvalThreshold} ${p.currency} wait for human approval.`,
+    p.requireApprovalFor?.length ? `These tools always wait for a person's approval, at any amount: ${p.requireApprovalFor.join(", ")}.` : "",
+    `Other money movements above ${p.approvalThreshold} ${p.currency} wait for a person's approval.`,
     p.allowedCounterparties?.length ? `Payees must match: ${p.allowedCounterparties.join(", ")}.` : "",
-    p.requireApprovalFor?.length ? `Always needs approval: ${p.requireApprovalFor.join(", ")}.` : "",
   ]
     .filter(Boolean)
     .join(" ");

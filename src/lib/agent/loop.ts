@@ -13,7 +13,8 @@ import { timeline } from "../events/bus";
 import { FEATURE_DEFAULTS, resolveModel } from "../ai/config";
 import { guardedClaudeCall, type BetaMessageParam } from "../ai/client";
 import type { AgentDefinition, AgentInput } from "./define";
-import { runTool } from "./execute";
+import type { Approval } from "./approvals";
+import { runTool, withApprovalFact } from "./execute";
 import type { Guard } from "./guard";
 import { describePolicy } from "./policy";
 import type { AgentTool } from "./tool";
@@ -32,6 +33,7 @@ export function buildSystemPrompt(def: AgentDefinition, guard: Guard): string {
     "How you work:",
     "- The user watches a live timeline of your steps. Before each tool call, write one short sentence saying what you are about to do and why.",
     `- Money-moving tools pass through a guard. ${describePolicy(guard.policy)} If a tool result says DENIED_BY_GUARD, do not retry the same call; explain what was blocked.`,
+    "- A tool that needs a person's approval returns its result only after a person approved it. Such a result carries person_approval: the guard held that call until a person approved it, as its fact says. Never say a call ran without approval or skipped one; code states the approval itself.",
     "- Amounts are decimal strings such as \"45.00\". Never invent ids; take them from the context or from tool results.",
     "- When you are done, reply with a 1-3 sentence summary of what you did, including amounts and ids.",
     `- Today's date is ${new Date().toISOString().slice(0, 10)}.`,
@@ -58,6 +60,8 @@ export async function runClaudeAgent(opts: { runId: string; channel: string; def
   const messages: BetaMessageParam[] = [{ role: "user", content: userGoal(opts.input) }];
   let costUsd = 0;
   let lastText = "";
+  /** Calls a person approved in this run. Once there is one, code states it, and the model can't say otherwise. */
+  const approved: Approval[] = [];
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     const { message, costUsd: turnCost } = await guardedClaudeCall(
@@ -83,7 +87,7 @@ export async function runClaudeAgent(opts: { runId: string; channel: string; def
       if (block.type === "thinking" && block.thinking.trim()) {
         timeline.emit({ kind: "agent.thinking", status: "info", title: "Reasoning", detail: block.thinking.trim(), data: { quiet: true } });
       } else if (block.type === "text" && block.text.trim()) {
-        lastText = block.text.trim();
+        lastText = withApprovalFact(block.text.trim(), approved);
         timeline.emit({ kind: "agent.message", status: "info", title: def.name, detail: lastText });
       } else if (block.type === "mcp_tool_use") {
         timeline.emit({ kind: "tool", status: "running", stepId: block.id, title: `PayPal MCP · ${block.name}`, subtitle: `Remote MCP (${block.server_name}) · read-only`, tool: { name: block.name, source: "paypal-agent-toolkit", input: block.input } });
@@ -106,6 +110,7 @@ export async function runClaudeAgent(opts: { runId: string; channel: string; def
         continue;
       }
       const r = await runTool(tool, tu.input, { runId, actor, channel, guard });
+      if (r.outcome?.status === "executed" && r.outcome.approval?.state === "approved") approved.push(r.outcome.approval);
       results.push({ type: "tool_result", tool_use_id: tu.id, content: r.content, is_error: r.isError });
     }
     // All results for one assistant turn go back in a single user message.

@@ -1187,9 +1187,14 @@ test.describe("mock-safe flows", () => {
     // PayPal's debug id for the refund call, in the What PayPal did drawer under the refund card.
     expect(refund!.debugId).toMatch(/^\w+$/);
     await expect(page.getByTestId("refund-debug-id")).toBeHidden();
-    await openPayPalDrawer(page);
+    const drawer = await openPayPalDrawer(page);
     await expect(page.getByTestId("refund-debug-id")).toHaveText(refund!.debugId!);
     if (sandbox) console.log("Refund debug_id:", refund!.debugId);
+    // The drawer says what code knows: a person approved before the refund ran. None of the agent's own words reach the learner.
+    await expect(drawer).toContainText("Approved by course team before the refund ran.", { timeout: 30_000 });
+    await expect(drawer).not.toContainText(/without (pausing|approval)/i);
+    await expect(drawer).not.toContainText("Proposing the amount PayPal says was paid");
+    await drawer.screenshot({ path: "screenshots/learner-drawer-approved.png" });
     if (sandbox) {
       const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!, refund!.refundId);
       console.log("PayPal re-read:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value], refund: [paypal.refund?.id, paypal.refund?.status, paypal.refund?.status_details?.reason, paypal.refund?.amount.value] }));
