@@ -25,6 +25,7 @@ import { CourseShownProvider, shownFor, useCourseShown } from "./course-shown";
 import { useCleanMode } from "./clean-mode";
 import { useJudgeMode } from "./judge-mode";
 import { GuaranteeStrip } from "./guarantee-strip";
+import { ProgressStrip } from "./progress-strip";
 import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
 const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
@@ -448,6 +449,7 @@ export function LearnerScreen({ id }: { id: string }) {
         eyebrow={`Welcome, ${enrollment.learnerName}`}
         title={shown.title}
       />
+      <ProgressStrip enrollment={enrollment} passMark={shown.passMark} />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
           <GuaranteeStrip enrollment={enrollment} passMark={shown.passMark} checkHref={shown.checkHref} />
