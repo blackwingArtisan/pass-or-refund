@@ -3,7 +3,7 @@
 import { retryAfterOf, showError } from "@/components/error-toast";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Award, BookOpenCheck, ChevronDown, CircleAlert, Clock, Receipt, Send, ShieldCheck, TimerReset } from "lucide-react";
+import { Award, BookOpenCheck, ChevronDown, CircleAlert, Clock, FileCheck, Receipt, Send, ShieldCheck, TimerReset } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import type { ApiError } from "@/components/kit/kit-provider";
@@ -452,7 +452,14 @@ export function LearnerScreen({ id }: { id: string }) {
 
           {past.length > 0 ? (
             <Card>
-              <CardHeader title="Your results" />
+              <CardHeader
+                title="Your results"
+                action={
+                  <Link href={`/learn/${enrollment.id}/receipt`} className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline" data-testid="grade-receipt-link">
+                    <FileCheck className="size-4" aria-hidden /> Grade receipt
+                  </Link>
+                }
+              />
               <CardBody className="space-y-8">
                 {past.map((attempt) => (
                   <AttemptResult key={attempt.number} attempt={attempt} />
