@@ -371,7 +371,7 @@ test.describe("the course team in one click", () => {
     await failTwice(page);
     const baseURL = test.info().project.use.baseURL!;
     for (const screen of [
-      { width: 1440, height: 900 },
+      { width: 1280, height: 900 },
       { width: 390, height: 844 },
     ]) {
       // A judge's fresh browser: no team cookie, only the test-run cookie that keeps suite learners off real lists.
@@ -389,6 +389,13 @@ test.describe("the course team in one click", () => {
       expect(box.y, `approvals top at ${screen.width}`).toBeLessThan(screen.height / 2);
       const others = team.getByTestId("team-everyone-else");
       if (await others.count()) expect((await others.boundingBox())!.y).toBeGreaterThan(box.y);
+      // The decision comes first: Approve is on the screen the judge lands on, above the agent's summary and reasons.
+      const approve = (await card.getByTestId("approve-button").boundingBox())!;
+      expect(approve.y + approve.height, `Approve on the first screen at ${screen.width}`).toBeLessThan(screen.height);
+      for (const below of ["approval-reasons", "agent-summary"]) {
+        const el = card.getByTestId(below);
+        if (await el.count()) expect((await el.boundingBox())!.y, `${below} under Approve at ${screen.width}`).toBeGreaterThan(approve.y);
+      }
       await team.screenshot({ path: `screenshots/team-approvals-${screen.width}.png` });
       await judge.close();
     }
@@ -492,9 +499,9 @@ test.describe("the story on the first screen", () => {
 
     // /cohort says how this app's own attempts were decided; one grade plus three grades is every attempt.
     await page.goto("/cohort");
-    const bands = page.getByTestId("cohort-grading");
+    const bands = page.getByRole("main").getByTestId("cohort-grading");
     await expect(bands).toContainText(/How the grader decided \d+ attempts/);
-    const count = async (testId: string) => Number((await page.getByTestId(testId).innerText()).match(/^\d+/)![0]);
+    const count = async (testId: string) => Number((await bands.getByTestId(testId).innerText()).match(/^\d+/)![0]);
     const attempts = Number((await bands.locator("p").first().innerText()).match(/\d+/)![0]);
     const [once, three, person] = [await count("cohort-graded-once"), await count("cohort-graded-three"), await count("cohort-to-person")];
     expect(once + three).toBe(attempts);
@@ -620,7 +627,7 @@ test.describe("the story on the first screen", () => {
   test("the home page is about two screens at 1440 wide", { tag: "@live" }, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
-    await expect(page.getByTestId("cohort-stats")).toBeVisible();
+    await expect(page.getByRole("main").getByTestId("cohort-stats")).toBeVisible();
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     console.log("Home page height at 1440:", height, "px =", (height / 900).toFixed(2), "screens");
     expect(height).toBeLessThanOrEqual(900 * 2.4);
@@ -791,7 +798,7 @@ test.describe("the story on the first screen", () => {
     await buy(page, request, "Drew Drift");
     await attempt(page, "fail1", 1);
     await page.goto("/cohort");
-    await expect(page.getByTestId("cohort-drift")).toContainText("made-up learners only");
+    await expect(page.getByRole("main").getByTestId("cohort-drift")).toContainText("made-up learners only");
   });
 
   test("the brand font is on every screen, and webhook names wrap at their dots", async ({ page, request }) => {
@@ -826,7 +833,7 @@ test.describe("mock-safe flows", () => {
     const before = await cohortOf(request);
     if (before.sources.attempts.length === 0) {
       await page.goto("/cohort");
-      await expect(page.getByText("No results yet")).toBeVisible();
+      await expect(page.getByRole("main").getByText("No results yet")).toBeVisible();
     }
 
     await buy(page, request, "Noor Haddad");
@@ -841,15 +848,15 @@ test.describe("mock-safe flows", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("/cohort");
-    await expect(page.getByTestId("cohort-fix-first")).toContainText(worst.item);
+    await expect(page.getByRole("main").getByTestId("cohort-fix-first")).toContainText(worst.item);
 
     if (SPONSOR_UI) {
-      const studio = page.getByTestId("cohort-studio");
+      const studio = page.getByRole("main").getByTestId("cohort-studio");
       await expect(studio.getByText("Rubric items missed most")).toBeVisible();
       await expect(studio.getByText("Pass rate by question")).toBeVisible();
       await expect(studio.getByText("Pass rate by course")).toBeVisible();
       await expect(studio.locator("canvas").first()).toBeVisible();
-      await expect(page.getByTestId("cohort-tables")).toHaveCount(0);
+      await expect(page.getByRole("main").getByTestId("cohort-tables")).toHaveCount(0);
       await expect(page.getByText("AG Studio by AG Grid Ltd")).toBeVisible();
       expect(await code()).toMatch(/ag-studio/i);
 
@@ -867,11 +874,11 @@ test.describe("mock-safe flows", () => {
       await page.getByTestId("studio-reset").click();
       await expect(numbers).toHaveCount(4);
     } else {
-      const tables = page.getByTestId("cohort-tables");
+      const tables = page.getByRole("main").getByTestId("cohort-tables");
       await expect(tables.getByRole("gridcell", { name: "Q1 Honing or sharpening" })).toBeVisible();
-      await expect(tables.getByRole("gridcell", { name: worst.item }).first()).toBeVisible();
+      await expect(tables.getByTestId("cohort-items-table").getByRole("cell", { name: worst.item, exact: true }).first()).toBeVisible();
       await expect(tables.getByText("Rubric items missed most")).toBeVisible();
-      await expect(page.getByTestId("cohort-studio")).toHaveCount(0);
+      await expect(page.getByRole("main").getByTestId("cohort-studio")).toHaveCount(0);
       await page.waitForLoadState("networkidle");
       const served = await code();
       expect(served.length).toBeGreaterThan(100_000);
@@ -879,6 +886,65 @@ test.describe("mock-safe flows", () => {
     }
     expect(errors).toEqual([]);
     await page.screenshot({ path: "screenshots/cohort-results.png" });
+  });
+
+  test("/cohort's first HTML already holds the numbers and the rubric items table, and it shows with no app script", { tag: "@live" }, async ({ page, request, browser }) => {
+    const api = await cohortOf(request);
+    test.skip(api.items.length === 0, "Needs graded attempts in the cohort.");
+    const decode = (html: string) => html.replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    // The very first response, as a crawler or a cold browser gets it: the table and its rows are HTML, not data for a script.
+    const html = decode(await (await request.get("/cohort")).text());
+    const table = /<table data-testid="cohort-items-table"[\s\S]*?<\/table>/.exec(html)?.[0] ?? "";
+    expect(table, "items table in the first HTML").not.toBe("");
+    expect(table).toContain(api.items[0].item);
+    expect(table).toContain(`${Math.round(api.items[0].missRate * 100)}%`);
+    expect(html).toContain('data-testid="cohort-fix-first"');
+    expect(html).toContain('data-testid="cohort-grading"');
+
+    // A browser that never loads the app's JavaScript bundle still shows the table, the fix-first line and the grading bands.
+    const baseURL = test.info().project.use.baseURL!;
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1280, height: 900 },
+    ]) {
+      const cold = await browser.newContext({ baseURL, viewport, storageState: { cookies: testRunState(baseURL).cookies, origins: [] } });
+      const coldPage = await cold.newPage();
+      await coldPage.route("**/_next/static/**/*.js", (route) => route.abort());
+      await coldPage.goto("/cohort");
+      const main = coldPage.getByRole("main");
+      await expect(main.getByTestId("cohort-items-table")).toBeVisible();
+      await expect(main.getByTestId("cohort-items-table").getByRole("cell", { name: api.items[0].item, exact: true }).first()).toBeVisible();
+      await expect(main.getByTestId("cohort-fix-first")).toBeVisible();
+      const { wide, room } = await coldPage.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide, `no sideways scroll at ${viewport.width}`).toBe(room);
+      await coldPage.screenshot({ path: `screenshots/cohort-first-html-${viewport.width}.png` });
+      await cold.close();
+    }
+    // With the app running, the same page.
+    await page.goto("/cohort");
+    await expect(page.getByRole("main").getByTestId("cohort-fix-first")).toContainText(api.items[0].item);
+  });
+
+  test("the landing hero says one thing: the For judges box sits below the fold, a small hero link jumps to it", { tag: "@live" }, async ({ page }) => {
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      const judges = page.getByTestId("for-judges");
+      await expect(judges).toContainText("Open the course team view");
+      // Not in the hero: well below the first screen.
+      const top = await judges.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+      expect(top, `For judges below the fold at ${viewport.width}`).toBeGreaterThan(viewport.height * 1.5);
+      await expect(page.getByTestId("hero-title").locator("xpath=ancestor::section[1]").getByTestId("team-passcode-shown")).toHaveCount(0);
+      await page.screenshot({ path: `screenshots/landing-hero-${viewport.width}.png` });
+      await page.getByTestId("hero-judges-link").click();
+      await expect(page).toHaveURL(/#judges$/);
+      await expect(judges.getByTestId("open-team-view")).toBeInViewport();
+      await judges.screenshot({ path: `screenshots/landing-judges-${viewport.width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
   });
 
   test("the home page's learner counts are the ones /api/team/cohort returns, with no real learner it doesn't hold", { tag: "@live" }, async ({ page }) => {
@@ -895,14 +961,14 @@ test.describe("mock-safe flows", () => {
     }).toPass({ timeout: 30_000 });
     await page.goto("/cohort");
     const api = (await (await page.request.get("/api/team/cohort")).json()) as { learners: { line: string } };
-    await expect(page.getByTestId("sample-cohort-label")).toContainText(api.learners.line.split(" and ")[0].split(",")[0]);
+    await expect(page.getByRole("main").getByTestId("sample-cohort-label")).toContainText(api.learners.line.split(" and ")[0].split(",")[0]);
   });
 
   test("sample learners are labelled, and stay out of the course team's list", { tag: "@live" }, async ({ page, request }) => {
     if ((await mode(request)) === "mock") expect((await request.post("/api/dev/seed")).ok()).toBe(true);
     await page.goto("/cohort");
-    await expect(page.getByTestId("sample-cohort-label")).toContainText("In these numbers: 36 made-up sample learners");
-    await expect(page.getByTestId("cohort-fix-first")).toBeVisible();
+    await expect(page.getByRole("main").getByTestId("sample-cohort-label")).toContainText("In these numbers: 36 made-up sample learners");
+    await expect(page.getByRole("main").getByTestId("cohort-fix-first")).toBeVisible();
     await page.goto("/team");
     await expect(page.getByRole("heading", { name: "Refunds and learners" })).toBeVisible();
     await expect(page.getByText("Sample learner")).toHaveCount(0);
@@ -924,8 +990,24 @@ test.describe("mock-safe flows", () => {
     const lines = await page.getByTestId("attempt-1").innerText();
     expect(lines).not.toMatch(/is partial|before she flips/);
     expect(lines).toContain("heel to tip, before Lena flips");
-    // Next keeps the course page mounted but hidden, so only the visible copy counts.
-    await expect(page.getByTestId("guarantee").filter({ visible: true })).toBeVisible();
+    // The guarantee is said once on the learner page: the strip. No second card after a fail.
+    await expect(page.getByRole("main").getByTestId("receipt")).toBeVisible();
+    await expect(page.getByTestId("guarantee").filter({ visible: true })).toHaveCount(0);
+    // "Your results" opens on one line: the attempt, its score against the pass mark, the tally, what's next.
+    const summary = page.getByRole("main").getByTestId("attempt-summary");
+    await expect(summary.getByTestId("attempt-summary-headline")).toHaveText(`Attempt 1: ${first}/100, pass mark 70. Not passed.`);
+    await expect(summary.getByTestId("attempt-summary-tally")).toHaveText(/^\d+ met · \d+ partial · \d+ missed$/);
+    await expect(summary.getByTestId("attempt-summary-loss")).toContainText(/Biggest loss: Question \d \(\d+\/\d+\)/);
+    await expect(summary.getByTestId("attempt-summary-next")).toHaveText(/^Next: attempt 2 opens \w+ \d/);
+    for (const [width, height] of [
+      [390, 844],
+      [1280, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await summary.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `screenshots/attempt-summary-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByTestId("attempt-1").scrollIntoViewIfNeeded();
     await page.screenshot({ path: "screenshots/graded-result.png" });
     await studyThenRetry(page);
@@ -933,6 +1015,8 @@ test.describe("mock-safe flows", () => {
     const second = await attempt(page, "fail2", 2);
     expect(second).toBeLessThan(66);
     await expect(page.getByTestId("refund-waiting")).toBeVisible();
+    await expect(page.getByRole("main").getByTestId("attempt-summary-headline")).toHaveText(`Attempt 2: ${second}/100, pass mark 70. Not passed.`);
+    await expect(page.getByRole("main").getByTestId("attempt-summary-next")).toHaveText("Next: a person on the course team approves your refund.");
     // The agent writes the learner's note from the lines they fell short on; code fills it if the model doesn't.
     await expect(page.getByTestId("refund-note")).toContainText("(written by the refund agent)", { timeout: 90_000 });
     if (!LIVE_AI) await expect(page.getByTestId("refund-note")).toContainText("Your answers fell short most on:");
@@ -1274,7 +1358,7 @@ test.describe("mock-safe flows", () => {
     await expect(strip.getByTestId("receipt-paid")).toHaveText(`${price} paid through PayPal, order ${payment!.orderId}`);
     await expect(strip.getByTestId("guarantee-line")).toHaveText(`${price} · Pass mark 70 of 100 · Two tries · Fail both and PayPal pays back the full ${price}, once a person approves.`);
     const promises = strip.getByTestId("guarantee-promises").locator("li");
-    await expect(promises).toHaveText([/^Rubric locked at purchase\. Check$/, /^On your PayPal order\. Verify on PayPal$/, /^A person approves every refund\. Terms$/]);
+    await expect(promises).toHaveText([/^Rubric locked at purchase\. Check$/, /^On your PayPal order\. Verify on PayPal$/, /^Every rule in writing\. Terms$/]);
     await expect(strip.getByTestId("verify-on-paypal")).toHaveAttribute("href", `/verify?q=${payment!.orderId}`);
     await expect(strip.getByTestId("check-fingerprint")).toHaveAttribute("href", `/rubric?v=1&fp=${lock!.fingerprint}&en=${id}`);
     await expect(strip.getByTestId("strip-terms")).toHaveAttribute("href", "/terms");
@@ -1297,6 +1381,10 @@ test.describe("mock-safe flows", () => {
     await expect(strip.getByTestId("receipt-invoice-id")).toHaveText(`PR-v1-${lock!.fingerprint}-${id}`);
     await expect(strip.getByTestId("rubric-fingerprint")).toHaveText(lock!.fingerprint.match(/.{4}/g)!.join(" "));
     await expect(strip.getByTestId("check-verify-link")).toHaveAttribute("href", `/verify?q=${payment!.orderId}`);
+    // The four rules live here too, so the learner page states the guarantee once: no second card.
+    await expect(strip.getByTestId("strip-guarantee-rules").locator("li")).toHaveCount(4);
+    await expect(strip.getByTestId("strip-guarantee-rules")).toContainText("A person on the course team approves every refund");
+    await expect(page.getByTestId("guarantee").filter({ visible: true })).toHaveCount(0);
     await strip.screenshot({ path: "screenshots/guarantee-strip-open-1280.png" });
 
     // The strip's Check opens the three-column tick, read from the purchase, the rubric served and PayPal.
@@ -1490,7 +1578,7 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("refund-declined")).toContainText("you can still open a dispute with PayPal");
 
     await page.goto("/cohort");
-    const declines = page.getByTestId("cohort-declines");
+    const declines = page.getByRole("main").getByTestId("cohort-declines");
     await expect(declines).toContainText("Refunds declined");
     await expect(declines.getByTestId("cohort-decline").filter({ hasText: note })).toBeVisible({ timeout: 30_000 });
     await expect(declines).not.toContainText("Dana Declined");
@@ -1508,7 +1596,7 @@ test.describe("mock-safe flows", () => {
     await page.goto("/team");
     await expect(page.getByTestId(`enrollment-${late}`).getByTestId("overdue")).toHaveText("overdue, 3 hours");
     await page.goto("/cohort");
-    const overdue = page.getByTestId("cohort-overdue");
+    const overdue = page.getByRole("main").getByTestId("cohort-overdue");
     await expect(overdue.getByTestId("cohort-overdue-row").filter({ hasText: "overdue, 3 hours" }).first()).toBeVisible();
     await overdue.screenshot({ path: "screenshots/cohort-overdue.png" });
     await page.goto("/team");
@@ -1979,7 +2067,7 @@ test.describe("mock-safe flows", () => {
       const numbers = page.locator(".ag-studio-value-widget");
       await expect(numbers).toHaveCount(4);
       for (const box of await numbers.evaluateAll((all) => all.map((one) => one.getBoundingClientRect().right))) expect(box).toBeLessThanOrEqual(390);
-      await expect(page.getByTestId("cohort-studio").getByText("Filters", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main").getByTestId("cohort-studio").getByText("Filters", { exact: true })).toHaveCount(0);
       await expect(page.getByTestId("studio-edit")).toHaveCount(0);
     }
   });

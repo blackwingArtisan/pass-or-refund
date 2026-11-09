@@ -611,7 +611,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   // 14. The close: what the creator should fix first
   cuts.pause(0.2);
   await page.goto("/cohort");
-  const fixFirst = page.getByTestId("cohort-fix-first");
+  const fixFirst = page.getByRole("main").getByTestId("cohort-fix-first");
   await fixFirst.waitFor();
   await centre(fixFirst);
   cuts.resume();

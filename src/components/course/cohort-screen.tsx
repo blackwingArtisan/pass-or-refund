@@ -1,24 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { BarChart3 } from "lucide-react";
 import type { ColDef } from "ag-grid-community";
-import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { col, DataGrid } from "@/components/data-grid";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, SkeletonCard, Stat } from "@/components/ui";
 import { usePhone } from "@/components/course/use-phone";
-import type { LearnerCounts } from "@/lib/course/learner-counts";
 import { formatUsd, type Cohort, type CourseSummary, type ItemSummary, type QuestionSummary, type RefundRow } from "@/lib/course/cohort";
+import type { CohortResponse } from "@/lib/course/cohort-response";
 
-export interface CohortResponse extends Cohort {
-  sampleLearners: number;
-  realLearners: number;
-  learners: LearnerCounts;
-  studioLicenseKey?: string;
-}
+export type { CohortResponse };
 
 // With the switch off at build time, next.config.ts points this import at an empty stand-in.
 const CohortStudio =
@@ -52,15 +46,6 @@ const QUESTION_COLUMNS: ColDef<QuestionSummary>[] = [
   numberColumn("maxPoints", "Out of"),
 ];
 
-const ITEM_COLUMNS: ColDef<ItemSummary>[] = [
-  col.text("item", "Rubric item", { minWidth: 340, tooltipField: "item" }),
-  col.text("lesson", "Lesson", { minWidth: 170 }),
-  percentColumn("missRate", "Miss rate", { sort: "desc" }),
-  numberColumn("partial", "Partial"),
-  numberColumn("notMet", "Missed"),
-  numberColumn("pointsLost", "Points lost", { maxWidth: 130 }),
-];
-
 const REFUND_COLUMNS: ColDef<RefundRow>[] = [
   col.date("requestedAt", "Requested"),
   col.text("state", "State", { maxWidth: 190 }),
@@ -87,10 +72,52 @@ function Section({ title, description, children }: { title: string; description:
   );
 }
 
-/** The free view: every number in the dashboard, in the kit's plain AG Grid. */
+/**
+ * The rubric items learners miss most, as a plain table: it is in the page's first HTML, before any
+ * script runs. On a phone only the item and its miss rate show.
+ */
+function ItemsTable({ items }: { items: ItemSummary[] }) {
+  const rows = [...items].sort((a, b) => b.missRate - a.missRate);
+  const cell = "px-3 py-2 text-right tabular-nums";
+  const wide = "hidden sm:table-cell";
+  return (
+    <div className="-mx-1 overflow-x-auto">
+      <table data-testid="cohort-items-table" className="w-full min-w-0 text-sm">
+        <thead className="border-b border-zinc-200 text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th scope="col" className="px-3 py-2 text-left">Rubric item</th>
+            <th scope="col" className={`px-3 py-2 text-left ${wide}`}>Lesson</th>
+            <th scope="col" className={cell}>Miss rate</th>
+            <th scope="col" className={`${cell} ${wide}`}>Partial</th>
+            <th scope="col" className={`${cell} ${wide}`}>Missed</th>
+            <th scope="col" className={`${cell} ${wide}`}>Points lost</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 text-zinc-800">
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="px-3 py-3 text-zinc-500">No rubric lines graded yet</td>
+            </tr>
+          ) : null}
+          {rows.map((row) => (
+            <tr key={row.itemId} data-testid={`cohort-item-${row.itemId}`}>
+              <td className="px-3 py-2">{row.item}</td>
+              <td className={`px-3 py-2 text-zinc-600 ${wide}`}>{row.lesson}</td>
+              <td className={`${cell} font-semibold text-zinc-900`}>{percent(row.missRate)}</td>
+              <td className={`${cell} ${wide}`}>{row.partial}</td>
+              <td className={`${cell} ${wide}`}>{row.notMet}</td>
+              <td className={`${cell} ${wide}`}>{row.pointsLost}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The free view: every number in the dashboard, the items as a plain table and the rest in the kit's AG Grid. */
 function CohortTables({ cohort }: { cohort: CohortResponse }) {
   const phone = usePhone();
-  const items = phone ? onPhone(ITEM_COLUMNS, ["item", "missRate"], { flex: 3 }) : ITEM_COLUMNS;
   const questions = phone ? onPhone(QUESTION_COLUMNS, ["question", "passRate"], { flex: 3 }) : QUESTION_COLUMNS;
   const courses = phone ? onPhone(COURSE_COLUMNS, ["course", "passRate"], { flex: 3 }) : COURSE_COLUMNS;
   const refunds = phone ? onPhone(REFUND_COLUMNS, ["state", "amountUsd", "paypalStatus"]) : REFUND_COLUMNS;
@@ -109,7 +136,7 @@ function CohortTables({ cohort }: { cohort: CohortResponse }) {
         />
       </div>
       <Section title="Rubric items missed most" description="Partial and missed both count. The lesson is the one to fix first.">
-        <DataGrid<ItemSummary> rows={cohort.items} columns={items} getRowId={(r) => r.itemId} height={phone ? 520 : 340} searchPlaceholder="Search rubric items…" pageSize={false} />
+        <ItemsTable items={cohort.items} />
       </Section>
       <Section title="Pass rate by question" description="A question counts as cleared at 70% of its points, the same mark as the whole check.">
         <DataGrid<QuestionSummary> rows={cohort.questions} columns={questions} getRowId={(r) => r.question} height={phone ? 300 : 250} search={false} pageSize={false} />
@@ -210,17 +237,26 @@ function FixFirst({ item }: { item: ItemSummary }) {
   );
 }
 
-export function CohortScreen() {
-  const { kitFetch } = useKit();
-  const [cohort, setCohort] = useState<CohortResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+/** False in the server's HTML and while hydrating, true after: the studio only draws in a browser. */
+const noSubscribe = () => () => {};
+const useMounted = () => useSyncExternalStore(noSubscribe, () => true, () => false);
 
-  useEffect(() => {
-    kitFetch<CohortResponse>("/api/team/cohort").then(setCohort, (e: Error) => setError(e.message));
-  }, [kitFetch]);
+/** The page header while the server builds the numbers. It fetches nothing, so the page never shows two copies. */
+export function CohortLoading() {
+  return (
+    <>
+      <PageHeader eyebrow="Course team" title="Cohort results" description="How learners did across every attempt, and which parts of the course to fix." />
+      <SkeletonCard />
+    </>
+  );
+}
 
-  const empty = cohort && cohort.sources.attempts.length === 0;
-  const worst = cohort?.items[0];
+/** Rendered with the numbers the server built for this request, so the first HTML already holds them. */
+export function CohortScreen({ cohort }: { cohort: CohortResponse }) {
+  const mounted = useMounted();
+
+  const empty = cohort.sources.attempts.length === 0;
+  const worst = cohort.items[0];
 
   return (
     <>
@@ -229,7 +265,7 @@ export function CohortScreen() {
         title="Cohort results"
         description="How learners did across every attempt, and which parts of the course to fix."
         actions={
-          cohort?.sampleLearners ? (
+          cohort.sampleLearners ? (
             <Badge tone="warning">
               {/* The line grows with real learners, so it wraps rather than push a phone sideways. */}
               <span data-testid="sample-cohort-label" className="whitespace-normal">
@@ -239,13 +275,11 @@ export function CohortScreen() {
           ) : null
         }
       />
-      {cohort?.sampleLearners && cohort.realLearners ? (
+      {cohort.sampleLearners && cohort.realLearners ? (
         <p data-testid="cohort-drift" className="mb-4 text-sm text-zinc-600">
           The creator&rsquo;s numbers on the home page use the {cohort.sampleLearners} made-up learners only. This page adds the {cohort.realLearners} real {cohort.realLearners === 1 ? "learner" : "learners"} who bought here, so its numbers move as people try the course.
         </p>
       ) : null}
-      {error ? <p className="text-sm text-danger-700">{error}</p> : null}
-      {!cohort && !error ? <SkeletonCard /> : null}
       {empty ? (
         <EmptyState
           icon={<BarChart3 className="size-5" />}
@@ -258,12 +292,13 @@ export function CohortScreen() {
           }
         />
       ) : null}
-      {cohort && !empty ? (
+      {!empty ? (
         <>
           {worst && worst.answered > 0 && worst.missRate > 0 ? <FixFirst item={worst} /> : null}
           <GradingBands grading={cohort.grading} />
           <RefundAccountability declines={cohort.declines} overdue={cohort.overdue} />
-          {CohortStudio ? <CohortStudio cohort={cohort} /> : <CohortTables cohort={cohort} />}
+          {/* The server's HTML holds the plain tables; with the sponsor UI built in, the studio takes over once the page runs. */}
+          {CohortStudio && mounted ? <CohortStudio cohort={cohort} /> : <CohortTables cohort={cohort} />}
         </>
       ) : null}
       <p className="mt-6 text-xs text-zinc-500">

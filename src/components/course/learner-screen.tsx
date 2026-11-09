@@ -19,10 +19,10 @@ import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
 import type { Attempt, EnrollmentView, LimitedEnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
+import { attemptSummary } from "@/lib/course/attempt-summary";
 import { CourseShownProvider, shownFor, useCourseShown } from "./course-shown";
 import { useCleanMode } from "./clean-mode";
 import { useJudgeMode } from "./judge-mode";
-import { Guarantee } from "./guarantee";
 import { GuaranteeStrip } from "./guarantee-strip";
 import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
@@ -312,6 +312,24 @@ function AfterFail({ enrollment, attempt, onTick, onReviewed }: { enrollment: En
   );
 }
 
+/** One line before the results: which attempt, its score against the pass mark, and what happens next. */
+function AttemptSummaryLine({ enrollment, attempt }: { enrollment: EnrollmentView; attempt: Attempt }) {
+  const { rubric } = useCourseShown();
+  const summary = attemptSummary({ attempt, passMark: rubric.passMark, questions: rubric.questions, status: enrollment.status, nextAttemptAt: enrollment.nextAttemptAt ?? undefined });
+  return (
+    <div data-testid="attempt-summary" className="-mb-2 rounded-lg bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
+      <p className="font-semibold text-zinc-900" data-testid="attempt-summary-headline">
+        {summary.headline}
+      </p>
+      <p className="mt-0.5">
+        <span data-testid="attempt-summary-tally">{summary.tally}</span>
+        {summary.biggestLoss ? <span data-testid="attempt-summary-loss">. {summary.biggestLoss}</span> : null}.{" "}
+        <span data-testid="attempt-summary-next">{summary.next}</span>
+      </p>
+    </div>
+  );
+}
+
 /** The server sent status and scores only: this browser isn't the one that bought, nor the course team's. */
 class LimitedView extends Error {
   constructor(readonly view: LimitedEnrollmentView) {
@@ -487,7 +505,6 @@ export function LearnerScreen({ id }: { id: string }) {
             <>
               <AfterFail enrollment={enrollment} attempt={latest} onTick={(item) => update("review", { item })} onReviewed={() => update("review", {})} />
               <ContestLine enrollment={enrollment} onChange={setEnrollment} />
-              <Guarantee priceCents={enrollment.priceCents} />
             </>
           ) : null}
 
@@ -502,6 +519,7 @@ export function LearnerScreen({ id }: { id: string }) {
                 }
               />
               <CardBody className="space-y-8">
+                {latest ? <AttemptSummaryLine enrollment={enrollment} attempt={latest} /> : null}
                 {past.map((attempt) => (
                   <AttemptResult key={attempt.number} attempt={attempt} />
                 ))}
