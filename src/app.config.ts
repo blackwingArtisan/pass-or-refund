@@ -13,8 +13,8 @@ export const appConfig = {
   brandForeground: "#FFFFFF", // kit:brand-foreground
   tagline: "Courses that pay you back if they can't teach you.",
   description: "An online course with a real guarantee: AI grades the final check, and failing it twice gets you a PayPal refund a person approved.",
-  repoUrl: "",
-  videoUrl: "",
+  repoUrl: "https://github.com/blackwingArtisan/pass-or-refund",
+  videoUrl: "", // TODO: the submitted demo video link
 
   nav: [
     { label: "Course", href: "/course" },
