@@ -4,7 +4,8 @@ import { connection } from "next/server";
 import { CircleAlert, CircleCheck, SearchCheck } from "lucide-react";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Card, CardBody } from "@/components/ui";
-import { verifyOnPayPal, type Verification } from "@/lib/course/verify";
+import { ChangeOneLine } from "@/components/course/change-one-line";
+import { publicRubricBody, verifyOnPayPal, type Verification } from "@/lib/course/verify";
 
 export const metadata = { title: "Verify a purchase on PayPal" };
 
@@ -87,7 +88,15 @@ async function ResultFromAddress({ searchParams }: { searchParams: Search }) {
   const { q } = await searchParams;
   if (!q?.trim()) return null;
   await connection();
-  return <Result v={await verifyOnPayPal(q)} />;
+  const v = await verifyOnPayPal(q);
+  // On a matching order, a visitor can change one line of a copy and watch the match break.
+  const body = v.status === "match" && v.paypal?.version && v.paypal.fingerprint ? publicRubricBody(v.paypal.version, v.paypal.fingerprint) : null;
+  return (
+    <>
+      <Result v={v} />
+      {body && v.paypal?.fingerprint ? <ChangeOneLine rubric={body} paypalFingerprint={v.paypal.fingerprint} /> : null}
+    </>
+  );
 }
 
 async function QueryInput({ searchParams }: { searchParams: Search }) {

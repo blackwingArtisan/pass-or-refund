@@ -1140,10 +1140,63 @@ test.describe("mock-safe flows", () => {
     }
   });
 
+  test("/verify catches a change: one edited line of a copy of the rubric no longer matches PayPal's order", { tag: "@live" }, async ({ page, request }) => {
+    const id = await buy(page, request, "Cy Change");
+    const { payment } = await enrollmentOf(request, id);
+    const orderId = payment!.orderId;
+    await page.goto(`/verify?q=${orderId}`);
+    const v = (testId: string) => page.getByRole("main").getByTestId(testId);
+    await expect(v("verify-result")).toHaveAttribute("data-status", "match");
+    const onPayPal = (await v("verify-paypal-rubric").locator("code").innerText()).trim();
+    const control = v("change-one-line");
+    await expect(control).toBeVisible();
+    // The browser hashes the untouched public rubric to the fingerprint on PayPal's order.
+    await expect(v("change-paypal-fingerprint")).toHaveText(onPayPal);
+    await expect(v("change-browser-fingerprint")).toHaveText(onPayPal);
+    // No server writes: changing and checking makes no request at all.
+    const writes: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`);
+    });
+    await v("change-line-select").selectOption({ index: 2 });
+    const label = (await v("change-line-select").locator("option:checked").innerText()).split(" (")[0];
+    const before = await v("change-line-text").inputValue();
+    await v("change-line-text").fill(before.replace(/\w+/, "Never"));
+    await v("change-line-check").click();
+    await expect(v("change-result")).toHaveAttribute("data-status", "no-match");
+    await expect(v("change-verdict")).toHaveText("Does not match PayPal's record");
+    await expect(v("change-named-line")).toContainText(`You changed ${label}`);
+    await expect(v("change-named-line")).toContainText(before);
+    const edited = (await v("change-edited-fingerprint").innerText()).trim();
+    expect(edited.replace(/\s/g, "")).toMatch(/^[0-9a-f]{12}$/);
+    expect(edited).not.toBe(onPayPal);
+    await control.screenshot({ path: "screenshots/verify-catches-change.png" });
+    // Put the words back: it matches again.
+    await v("change-line-text").fill(before);
+    await v("change-line-check").click();
+    await expect(v("change-result")).toHaveAttribute("data-status", "match");
+    await expect(v("change-verdict")).toHaveText("Matches PayPal's record");
+    expect(writes).toEqual([]);
+    // PayPal's order is as it was: nothing was written to it.
+    await page.reload();
+    await expect(v("verify-result")).toHaveAttribute("data-status", "match");
+    await expect(v("verify-paypal-rubric").locator("code")).toHaveText(onPayPal);
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(orderId, payment!.captureId!);
+      console.log("PayPal re-read:", JSON.stringify({ catchesChange: [paypal.order.id, paypal.order.status, paypal.order.purchase_units[0].invoice_id] }));
+    }
+    // The order /rubric links to for this check: logged, so a run shows whether this sandbox account holds it.
+    await page.goto("/rubric");
+    await page.getByTestId("rubric-change-link").click();
+    const linked = await v("verify-result").getAttribute("data-status");
+    console.log(`[verify] /rubric's linked order: ${linked}, change-one-line ${(await v("change-one-line").count()) ? "shown" : "not shown"}`);
+  });
+
   test("/verify is linked from the landing and the public rubric, and its form only reads", { tag: "@live" }, async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("landing-verify-link")).toHaveAttribute("href", /^\/verify\?q=[A-Z0-9]{17}$/);
     await page.goto("/rubric");
+    await expect(page.getByTestId("rubric-change-link")).toHaveAttribute("href", /^\/verify\?q=[A-Z0-9]{17}#change-one-line$/);
     await page.getByTestId("rubric-verify-link").click();
     await expect(page).toHaveURL(/\/verify$/);
     await expect(page.getByTestId("verify-form")).toHaveAttribute("method", "get");

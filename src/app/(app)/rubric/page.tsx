@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Card, CardBody, CardHeader } from "@/components/ui";
 import { readOrderTerms, type PayPalTermsCheck } from "@/lib/course/order-terms";
 import { checkFingerprint, rubricFingerprint, rubricOnSaleNow } from "@/lib/course/rubric-lock";
+import { SHOWN_REFUND } from "@/lib/course/shown-refund";
 
 export const metadata = { title: "The public rubric" };
 
@@ -118,7 +119,11 @@ export default function RubricPage({ searchParams }: { searchParams: Search }) {
             <Link href="/verify" className="underline" data-testid="rubric-verify-link">
               Verify your order on PayPal
             </Link>
-            .
+            . Or{" "}
+            <Link href={`/verify?q=${SHOWN_REFUND.orderId}#change-one-line`} className="underline" data-testid="rubric-change-link">
+              change one line and check again
+            </Link>{" "}
+            against a real order.
           </p>
         </CardBody>
       </Card>
