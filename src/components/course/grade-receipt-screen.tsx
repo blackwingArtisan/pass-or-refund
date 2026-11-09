@@ -21,6 +21,7 @@ export function GradeReceiptScreen({ id }: { id: string }) {
   const [receipt, setReceipt] = useState<GradeReceipt | null>(null);
   const [lines, setLines] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState(false);
+  const [notYours, setNotYours] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -30,12 +31,13 @@ export function GradeReceiptScreen({ id }: { id: string }) {
         setReceipt(r);
         setLines(Object.fromEntries(shownFor(enrollment).rubric.questions.flatMap((q) => q.items.map((item) => [item.id, item.text]))));
       })
-      .catch(() => live && setMissing(true));
+      .catch((e) => live && ((e as { status?: number }).status === 403 ? setNotYours(true) : setMissing(true)));
     return () => {
       live = false;
     };
   }, [id, kitFetch]);
 
+  if (notYours) return <EmptyState title="This grade receipt is the learner's" description="Only the learner's own browser, the one that bought the course, and the course team can open it." action={<Link href="/course" className="text-sm font-medium text-brand">Back to the course</Link>} />;
   if (missing) return <EmptyState title="We can't find that enrollment" description="It may have been cleared." action={<Link href="/course" className="text-sm font-medium text-brand">Back to the course</Link>} />;
   if (!receipt) return <SkeletonCard />;
 

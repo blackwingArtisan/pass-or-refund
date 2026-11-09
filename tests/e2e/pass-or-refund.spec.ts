@@ -181,13 +181,26 @@ async function openPayPalDrawer(page: Page) {
 
 const EMAIL_SHAPE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
 
-const enrollmentOf = async (request: APIRequestContext, id: string) => (await (await request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
+/** API contexts already signed in as the course team. */
+const teamContexts = new WeakSet<APIRequestContext>();
+/** A learner's record in full is for their own browser and the course team: the suite reads it as the team. */
+async function asTeam(request: APIRequestContext) {
+  if (teamContexts.has(request)) return;
+  await unlockTeam(request);
+  teamContexts.add(request);
+}
+
+const enrollmentOf = async (request: APIRequestContext, id: string) => {
+  await asTeam(request);
+  return (await (await request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
+};
 
 const cohortOf = async (request: APIRequestContext) => (await (await request.get("/api/team/cohort")).json()) as Cohort;
 
 type Receipt = { receiptHash: string; course: { id?: string; title: string }; rubric: { fingerprint: string }; attempts: { outcome: string; attemptHash: string; items: { verdict: string; points: number; of: number }[] }[]; refund: { refundId: string } | null };
 
 async function receiptOf(request: APIRequestContext, id: string): Promise<Receipt> {
+  await asTeam(request);
   const res = await request.get(`/api/enrollments/${id}/receipt`);
   expect(res.ok()).toBe(true);
   return (await res.json()) as Receipt;
@@ -223,6 +236,52 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test.describe("who sees what", () => {
+  test("a learner's name and answers reach only their own browser and the course team; anyone else with the id gets status and scores", { tag: "@live" }, async ({ page, request, browser, baseURL }) => {
+    const id = await buy(page, request, "Lee Private");
+    await attempt(page, "fail1", 1);
+    // The learner's own browser: everything, as before.
+    const own = (await (await page.request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
+    expect(own.learnerName).toBe("Lee Private");
+    const answer = Object.values(own.attempts[0].answers)[0];
+    expect(answer.length).toBeGreaterThan(20);
+    expect((await page.request.get(`/api/enrollments/${id}/receipt`)).ok()).toBe(true);
+
+    // Someone else who has the id: status and scores, no name, no answers, no grade receipt.
+    const stranger = await browser.newContext({ baseURL, storageState: { cookies: testRunState(baseURL!).cookies, origins: [] } });
+    const res = await stranger.request.get(`/api/enrollments/${id}`);
+    expect(res.ok()).toBe(true);
+    const shown = await res.text();
+    expect(JSON.parse(shown)).toEqual({ id, limited: true, status: "active", attempts: [{ number: 1, score: own.attempts[0].score, outcome: own.attempts[0].outcome, flagged: false }] });
+    expect(shown).not.toContain("Lee Private");
+    expect(shown).not.toContain(answer.slice(0, 20));
+    expect((await stranger.request.get(`/api/enrollments/${id}/receipt`)).status()).toBe(403);
+    // Nor can they act as the learner.
+    expect((await stranger.request.post(`/api/enrollments/${id}/attempts`, { data: { answers: { q1: "Not mine to send" } } })).status()).toBe(403);
+    expect((await stranger.request.post(`/api/enrollments/${id}/skip-wait`)).status()).toBe(403);
+    expect((await stranger.request.post(`/api/enrollments/${id}/review`, { data: {} })).status()).toBe(403);
+    // Asking PayPal about the purchase doesn't hand it over either.
+    expect(await (await stranger.request.post(`/api/enrollments/${id}/check-payment`)).json()).toMatchObject({ limited: true });
+    const strangerPage = await stranger.newPage();
+    await strangerPage.goto(`/learn/${id}`);
+    await expect(strangerPage.getByTestId("learner-limited")).toBeVisible();
+    await expect(strangerPage.getByTestId("limited-attempt")).toContainText(`Attempt 1: ${own.attempts[0].score} / 100`);
+    await expect(strangerPage.locator("main")).not.toContainText("Lee Private");
+    await expect(strangerPage.getByTestId("submit-attempt")).toHaveCount(0);
+    await strangerPage.screenshot({ path: "screenshots/learner-limited.png" });
+
+    // The course team, signed in with the passcode: everything again.
+    await unlockTeam(stranger.request);
+    const team = (await (await stranger.request.get(`/api/enrollments/${id}`)).json()) as EnrollmentView;
+    expect(team.learnerName).toBe("Lee Private");
+    expect(Object.values(team.attempts[0].answers)[0]).toBe(answer);
+    await stranger.close();
+
+    // And the learner's own page still works in full.
+    await page.reload();
+    await expect(page.getByTestId("attempt-1")).toBeVisible();
+    await expect(page.getByTestId("learner-limited")).toHaveCount(0);
+  });
+
   test("the course team view needs the passcode from the For judges box, and no API sends an email", async ({ page, request, browser }) => {
     const id = await buy(page, request, "Gita <i>Gate</i>", newEmail("Gita Gate"));
     await expect(page.getByText("Gita Gate").first()).toBeVisible();
@@ -537,12 +596,14 @@ test.describe("the story on the first screen", () => {
     await tools.locator("summary").click();
     await expect(page.getByTestId("mode-badges")).toBeVisible();
     await expect(page.getByTestId("judge-toggle")).toBeVisible();
+    // The learner's own browser cookies (the purchase's, and the test-run one) carry over to the clean recording.
+    const { cookies } = await visitor.storageState();
     await visitor.close();
 
     // Clean mode, as the demo records it: no For judges menu or box, no prepared answers, even with shortcuts saved.
     const clean = await browser.newContext({
       baseURL,
-      storageState: { cookies: testRunState(baseURL).cookies, origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "por_clean", value: "1" }, { name: "por_judge", value: "1" }] }] },
+      storageState: { cookies, origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "por_clean", value: "1" }, { name: "por_judge", value: "1" }] }] },
     });
     const recorded = await clean.newPage();
     await recorded.goto("/");
@@ -1375,7 +1436,7 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("next-attempt-at")).not.toBeEmpty();
     await expect(page.getByTestId("submit-attempt")).toHaveCount(0);
     await page.screenshot({ path: "screenshots/attempt-gap.png", fullPage: true });
-    const early = await request.post(`/api/enrollments/${id}/attempts`, { data: { answers: { q1: "Trying early", q2: "Trying early", q3: "Trying early", q4: "Trying early" } } });
+    const early = await page.request.post(`/api/enrollments/${id}/attempts`, { data: { answers: { q1: "Trying early", q2: "Trying early", q3: "Trying early", q4: "Trying early" } } });
     expect(early.status()).toBe(409);
     await studyThenRetry(page);
     await attempt(page, "fail2", 2);
@@ -1384,7 +1445,7 @@ test.describe("mock-safe flows", () => {
 
   /** Buys through the mock PayPal window as a given PayPal payer: an account id, or just the email PayPal has (a guest card buyer). */
   async function buyAsPayer(page: Page, request: APIRequestContext, name: string, payer: { payerId?: string; email?: string }) {
-    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: name, learnerEmail: newEmail(name) } })).json();
+    const { enrollmentId, orderId } = await (await page.request.post("/api/enrollments", { data: { learnerName: name, learnerEmail: newEmail(name) } })).json();
     expect((await request.post(`/api/dev/mock/approve-order/${orderId}`, { data: payer })).ok()).toBe(true);
     expect((await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId } })).ok()).toBe(true);
     await page.goto(`/learn/${enrollmentId}`);
@@ -1435,7 +1496,7 @@ test.describe("mock-safe flows", () => {
   }
 
   test("a normal purchase never says it was recovered, even with the page asking PayPal while the capture runs", { tag: "@live" }, async ({ page, request }) => {
-    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: "Nia Normal", learnerEmail: newEmail("Nia Normal") } })).json();
+    const { enrollmentId, orderId } = await (await page.request.post("/api/enrollments", { data: { learnerName: "Nia Normal", learnerEmail: newEmail("Nia Normal") } })).json();
     const sandbox = (await mode(request)) === "sandbox";
     expect((await request.post(sandbox ? `/api/dev/sandbox/approve-order/${orderId}` : `/api/dev/mock/approve-order/${orderId}`, sandbox ? undefined : { data: { email: newEmail("paypal.nia") } })).ok()).toBe(true);
     // PayPal's window reports the approval while the course page keeps asking PayPal about the order, as it does with the window open.
@@ -1482,8 +1543,8 @@ test.describe("mock-safe flows", () => {
     }
   });
 
-  test("the app stops after PayPal takes the money: opening the course page is enough", { tag: "@live" }, async ({ page, request }) => {
-    const { id } = await paidBehindTheApp(request, "Bo Reloads", newEmail("Bo Reloads"));
+  test("the app stops after PayPal takes the money: opening the course page is enough", { tag: "@live" }, async ({ page }) => {
+    const { id } = await paidBehindTheApp(page.request, "Bo Reloads", newEmail("Bo Reloads"));
     await page.goto(`/learn/${id}`);
     await expect(page.getByTestId("payment-recovered")).toBeVisible();
     await expect(page.getByTestId("submit-attempt")).toBeVisible();
@@ -1493,7 +1554,7 @@ test.describe("mock-safe flows", () => {
   const quietRows = (timeline: Locator) => timeline.locator("ol > li:not([data-testid=timeline-step]) span.truncate > span:first-child").allInnerTexts();
 
   test("the PayPal timeline folds repeated checks into one row, so the money steps stand out", { tag: "@live" }, async ({ page, request }) => {
-    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: "Quinn Quiet", learnerEmail: newEmail("Quinn Quiet") } })).json();
+    const { enrollmentId, orderId } = await (await page.request.post("/api/enrollments", { data: { learnerName: "Quinn Quiet", learnerEmail: newEmail("Quinn Quiet") } })).json();
     // The course page asks PayPal about the order while its window is open; three asks, as the learner's page.
     const asLearner = { headers: { "x-kit-session": `enrollment:${enrollmentId}` } };
     for (let i = 0; i < 3; i++) expect((await request.post(`/api/enrollments/${enrollmentId}/check-payment`, asLearner)).ok()).toBe(true);
@@ -1515,8 +1576,8 @@ test.describe("mock-safe flows", () => {
     await timeline.screenshot({ path: "screenshots/timeline-folded.png" });
   });
 
-  test("a checkout nobody paid for says so", { tag: "@live" }, async ({ page, request }) => {
-    const { enrollmentId } = await (await request.post("/api/enrollments", { data: { learnerName: "Una Paid", learnerEmail: newEmail("Una Paid") } })).json();
+  test("a checkout nobody paid for says so", { tag: "@live" }, async ({ page }) => {
+    const { enrollmentId } = await (await page.request.post("/api/enrollments", { data: { learnerName: "Una Paid", learnerEmail: newEmail("Una Paid") } })).json();
     await page.goto(`/learn/${enrollmentId}`);
     await expect(page.getByTestId("purchase-unfinished")).toContainText("PayPal hasn\u2019t taken any money");
     await page.screenshot({ path: "screenshots/purchase-unfinished.png" });

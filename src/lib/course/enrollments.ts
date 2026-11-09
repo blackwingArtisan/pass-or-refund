@@ -1,5 +1,5 @@
 /** Enrollment records, kept in the kit's JSON store. Server only. */
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { getApprovals } from "@/lib/agent/approvals";
 import { HttpError } from "@/lib/http";
 import { toMinor } from "@/lib/money";
@@ -26,6 +26,7 @@ export function createEnrollment(learnerName: string, learnerEmail: string, opts
     id: `en_${randomUUID().slice(0, 8)}`,
     learnerName,
     learnerEmail,
+    ownerKey: randomBytes(16).toString("hex"),
     status: "unpaid" as const,
     createdAt: new Date().toISOString(),
     attempts: [],
@@ -151,8 +152,10 @@ export function viewEnrollment(input: Enrollment): EnrollmentView {
   }
   // PayPal's email for the buyer is only for matching one refund per payer: it never leaves the server.
   // So is the email the learner typed: no screen needs it.
-  const { learnerEmail, ...shown } = enrollment;
+  // The owner key is the buyer's browser's proof of purchase: it never leaves the server either.
+  const { learnerEmail, ownerKey, ...shown } = enrollment;
   void learnerEmail;
+  void ownerKey;
   const payment = enrollment.payment ? { ...enrollment.payment, payerEmail: undefined } : undefined;
   return { ...shown, payment, creatorCourse: creatorCourseShown(enrollment), approval: pendingApproval(enrollment), completedFails: completedFails(enrollment.attempts), guaranteeVoid: guaranteeVoid(enrollment.attempts), guarantee: guaranteeFor(enrollment), nextAttemptAt: nextAttemptOpensAt(enrollment.attempts, enrollment.gapSkippedAfter), overdue: overdueFor(enrollment) };
 }

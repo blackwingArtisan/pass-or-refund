@@ -201,6 +201,8 @@ export interface Enrollment {
   id: string;
   learnerName: string;
   learnerEmail: string;
+  /** Held by the buyer's browser in an HttpOnly cookie (learner-access.ts): only it and the course team read the name and answers. Never shown. */
+  ownerKey?: string;
   courseSlug: string;
   status: EnrollmentStatus;
   createdAt: string;
@@ -243,7 +245,16 @@ export interface GuaranteeDecision {
 }
 
 /** What the API sends. The learner's email stays on the server. */
-export interface EnrollmentView extends Omit<Enrollment, "learnerEmail"> {
+/** What anyone with an enrollment id may read: where the purchase stands and the scores, without the learner's name or words. */
+export interface LimitedEnrollmentView {
+  id: string;
+  limited: true;
+  status: EnrollmentStatus;
+  courseId?: string;
+  attempts: { number: number; score: number; outcome: Outcome; flagged: boolean }[];
+}
+
+export interface EnrollmentView extends Omit<Enrollment, "learnerEmail" | "ownerKey"> {
   approval: PendingApproval | null;
   completedFails: number;
   guaranteeVoid: boolean;
