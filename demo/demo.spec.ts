@@ -460,7 +460,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   const check = page.getByTestId("fingerprint-check");
   await expect(page.getByTestId("paypal-order-terms")).toHaveAttribute("data-status", "matches", { timeout: 30_000 });
   await expect(page.getByTestId("fingerprint-verdict")).toHaveText("Matches");
-  expect(await page.getByTestId("paypal-invoice-id").innerText()).toContain(enrollmentId);
+  expect(await page.getByTestId("paypal-invoice-id").textContent()).toContain(enrollmentId);
   await centre(check);
   cuts.resume();
   await highlight(page, page.getByTestId("paypal-order-terms"), 1400);

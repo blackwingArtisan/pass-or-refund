@@ -17,7 +17,8 @@ const grouped = (fingerprint: string) => fingerprint.match(/.{1,4}/g)!.join(" ")
 
 /** The rubric terms a learner is graded on: on the course page before buying, then on the receipt and certificate. */
 /** With `enrollmentId`, the check also reads the learner's PayPal order, so it can show PayPal's record beside the rubric. */
-export function RubricTerms({ lock, before = false, checkHref, enrollmentId, className = "" }: { lock?: Pick<RubricLock, "version" | "fingerprint"> & { lockedAt?: string }; before?: boolean; checkHref?: string; enrollmentId?: string; className?: string }) {
+/** `link={false}` leaves the link out, for a place that already links to the check. */
+export function RubricTerms({ lock, before = false, checkHref, enrollmentId, link = true, className = "" }: { lock?: Pick<RubricLock, "version" | "fingerprint"> & { lockedAt?: string }; before?: boolean; checkHref?: string; enrollmentId?: string; link?: boolean; className?: string }) {
   if (!lock) return null;
   const when = lock.lockedAt ? new Date(lock.lockedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "";
   return (
@@ -27,7 +28,7 @@ export function RubricTerms({ lock, before = false, checkHref, enrollmentId, cla
         {before ? "You're graded on " : "Graded on "}rubric <span data-testid="rubric-version">v{lock.version}</span>, fingerprint{" "}
         <code data-testid="rubric-fingerprint" className="font-mono text-zinc-900">{grouped(lock.fingerprint)}</code>
         {before ? ". It's locked when you buy, so the terms can't change after." : `, locked when you bought${when ? ` on ${when}` : ""}.`}{" "}
-        {before ? (
+        {!link ? null : before ? (
           <Link href="/rubric" className="font-medium text-brand underline" data-testid="read-rubric">
             Read the full rubric
           </Link>

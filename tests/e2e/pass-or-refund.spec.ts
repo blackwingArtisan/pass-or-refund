@@ -1215,6 +1215,9 @@ test.describe("mock-safe flows", () => {
 
     await buy(page, request, "Fay Fingerprint");
     const receipt = page.getByTestId("receipt");
+    // The hash sits behind "Check it yourself", so the strip reads without it.
+    await expect(receipt.getByTestId("rubric-fingerprint")).toBeHidden();
+    await receipt.getByTestId("check-it-yourself").locator("summary").click();
     const bought = (await receipt.getByTestId("rubric-fingerprint").innerText()).replace(/\s/g, "");
     // Next streams the check in; while it swaps in, a hidden copy sits outside the page's main area.
     const checked = page.getByRole("main").getByTestId("fingerprint-check");
@@ -1233,6 +1236,13 @@ test.describe("mock-safe flows", () => {
     await expect(paypalRow.getByTestId("paypal-order-call")).toHaveText(`GET /v2/checkout/orders/${fayPayment!.orderId}`);
     await expect(paypalRow.getByTestId("paypal-invoice-id")).toHaveText(`PR-v1-${published}-${fayId}`);
     await expect(paypalRow.getByTestId("paypal-item-name")).toContainText(`rubric v1 · ${published}`);
+    // Receipt | Rubric on sale | PayPal: each column ticked from its own read.
+    const grouped = published.match(/.{4}/g)!.join(" ");
+    for (const column of ["receipt", "on-sale", "paypal"]) {
+      await expect(checked.getByTestId(`tick-${column}`)).toHaveAttribute("data-status", "tick");
+      await expect(checked.getByTestId(`tick-${column}-fingerprint`)).toHaveText(grouped);
+    }
+    await expect(checked.getByTestId("tick-paypal")).toContainText("Read from PayPal just now");
     if ((await mode(request)) === "sandbox") {
       const paypal = await readPayPalObjects(fayPayment!.orderId, fayPayment!.captureId!);
       console.log("PayPal order terms:", JSON.stringify({ order: paypal.order.id, invoice_id: paypal.order.purchase_units[0].invoice_id, item: paypal.order.purchase_units[0].items?.[0]?.name }));
@@ -1248,7 +1258,67 @@ test.describe("mock-safe flows", () => {
     await page.getByTestId("fingerprint-submit").click();
     await expect(verdict).toHaveText("Changed since you bought");
     await expect(checked).toHaveAttribute("data-status", "changed");
+    // A typed fingerprint we never sold: the receipt and the rubric on sale are crossed, PayPal wasn't read.
+    await expect(checked.getByTestId("tick-receipt")).toHaveAttribute("data-status", "cross");
+    await expect(checked.getByTestId("tick-on-sale")).toHaveAttribute("data-status", "cross");
+    await expect(checked.getByTestId("tick-paypal")).toHaveAttribute("data-status", "unread");
     await checked.screenshot({ path: "screenshots/fingerprint-changed.png" });
+  });
+
+  test("the learner's guarantee strip: the promise in one line, three ticks with links, the hash behind Check it yourself", { tag: "@live" }, async ({ page, request }) => {
+    const id = await buy(page, request, "Gus Guarantee");
+    const { payment, rubric: lock, priceCents } = await enrollmentOf(request, id);
+    const strip = page.getByRole("main").getByTestId("receipt");
+    await expect(strip.getByRole("heading", { name: "Your guarantee" })).toBeVisible();
+    const price = `$${(priceCents / 100).toFixed(2)}`;
+    await expect(strip.getByTestId("receipt-paid")).toHaveText(`${price} paid through PayPal, order ${payment!.orderId}`);
+    await expect(strip.getByTestId("guarantee-line")).toHaveText(`${price} · Pass mark 70 of 100 · Two tries · Fail both and PayPal pays back the full ${price}, once a person approves.`);
+    const promises = strip.getByTestId("guarantee-promises").locator("li");
+    await expect(promises).toHaveText([/^Rubric locked at purchase\. Check$/, /^On your PayPal order\. Verify on PayPal$/, /^A person approves every refund\. Terms$/]);
+    await expect(strip.getByTestId("verify-on-paypal")).toHaveAttribute("href", `/verify?q=${payment!.orderId}`);
+    await expect(strip.getByTestId("check-fingerprint")).toHaveAttribute("href", `/rubric?v=1&fp=${lock!.fingerprint}&en=${id}`);
+    await expect(strip.getByTestId("strip-terms")).toHaveAttribute("href", "/terms");
+    // The fingerprint and invoice_id are there, one click down.
+    await expect(strip.getByTestId("receipt-invoice-id")).toBeHidden();
+    for (const [width, height] of [
+      [390, 844],
+      [1280, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const { wide, room } = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide).toBe(room);
+      // Each promise sits on its own line on a phone and side by side on a laptop.
+      const tops = await promises.evaluateAll((all) => all.map((li) => Math.round(li.getBoundingClientRect().top)));
+      expect(new Set(tops).size).toBe(width < 640 ? 3 : 1);
+      await strip.screenshot({ path: `screenshots/guarantee-strip-${width}.png` });
+    }
+    await strip.getByTestId("check-it-yourself").locator("summary").click();
+    await expect(strip.getByTestId("receipt-invoice-id")).toHaveText(`PR-v1-${lock!.fingerprint}-${id}`);
+    await expect(strip.getByTestId("rubric-fingerprint")).toHaveText(lock!.fingerprint.match(/.{4}/g)!.join(" "));
+    await expect(strip.getByTestId("check-verify-link")).toHaveAttribute("href", `/verify?q=${payment!.orderId}`);
+    await strip.screenshot({ path: "screenshots/guarantee-strip-open-1280.png" });
+
+    // The strip's Check opens the three-column tick, read from the purchase, the rubric served and PayPal.
+    await strip.getByTestId("check-fingerprint").click();
+    await page.waitForURL(/\/rubric\?/);
+    const ticks = page.getByRole("main").getByTestId("three-way-tick");
+    await expect(ticks.locator("li")).toHaveCount(3);
+    for (const column of ["receipt", "on-sale", "paypal"]) await expect(ticks.getByTestId(`tick-${column}`)).toHaveAttribute("data-status", "tick", { timeout: 30_000 });
+    for (const [width, height] of [
+      [390, 844],
+      [1280, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      const { wide, room } = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide).toBe(room);
+      await page.getByRole("main").getByTestId("fingerprint-check").screenshot({ path: `screenshots/rubric-three-way-${width}.png` });
+    }
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
+      expect(paypal.order.purchase_units[0].items?.[0]?.name).toContain(lock!.fingerprint);
+      console.log("PayPal re-read:", JSON.stringify({ guaranteeStrip: [paypal.order.id, paypal.order.status, paypal.order.purchase_units[0].invoice_id] }));
+    }
   });
 
   test("a passing attempt gets a certificate and no refund", async ({ page, request }) => {
