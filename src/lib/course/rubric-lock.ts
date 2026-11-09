@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import type { Rubric } from "@/lib/grading/frozen/score-items";
 import { HttpError } from "@/lib/http";
 import { rubric as published } from "./content";
+import { rubricText } from "./rubric-hash";
 import type { Enrollment, RubricLock } from "./types";
 
 type Version = { version: string; rubric: Rubric };
@@ -15,8 +16,8 @@ type Version = { version: string; rubric: Rubric };
 /** Every rubric version ever sold, oldest first. The last one is on sale now. */
 const VERSIONS: Version[] = [{ version: "1", rubric: published }];
 
-/** The exact bytes the fingerprint is taken from, so a buyer can hash them too. */
-export const rubricText = (rubric: Rubric) => JSON.stringify(rubric);
+/** The exact bytes the fingerprint is taken from, so a buyer can hash them too (in a browser: rubric-hash.ts). */
+export { rubricText };
 
 export const rubricFingerprint = (rubric: Rubric) => createHash("sha256").update(rubricText(rubric)).digest("hex").slice(0, 12);
 

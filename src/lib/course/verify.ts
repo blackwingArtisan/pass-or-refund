@@ -4,6 +4,7 @@
  * guarantee on the item line) is set beside the public rubric's own hash. Reads only. It shows no
  * learner data: no name, email, answers or payer, only the terms PayPal carries. Server only.
  */
+import type { Rubric } from "@/lib/grading/frozen/score-items";
 import { getPayPal } from "@/lib/paypal";
 import type { Order } from "@/lib/paypal/types";
 import { creatorCourseId, creatorCoursePath, creatorCourses } from "./creator-store";
@@ -67,6 +68,14 @@ export function publicRubricFor(version: string, fingerprint: string): PublicRub
   const creator = creatorCourses().get(creatorCourseId(fingerprint));
   if (creator && rubricFingerprint(creator.rubric) === fingerprint) return { title: creator.rubric.title, version, fingerprint, href: creatorCoursePath(creator.id) };
   return null;
+}
+
+/** The public rubric itself (sample or creator) whose bytes hash to this fingerprint: what /verify lets a visitor edit a copy of. */
+export function publicRubricBody(version: string, fingerprint: string): Rubric | null {
+  const sample = rubricVersion(version);
+  if (sample && rubricFingerprint(sample.rubric) === fingerprint) return sample.rubric;
+  const creator = creatorCourses().get(creatorCourseId(fingerprint));
+  return creator && rubricFingerprint(creator.rubric) === fingerprint ? creator.rubric : null;
 }
 
 /** The sample course's public rubric of this version, hashed now: what a fingerprint that matches nothing is set against. */
