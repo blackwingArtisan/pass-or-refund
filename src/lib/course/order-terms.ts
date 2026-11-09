@@ -9,6 +9,7 @@ import { moneyFromMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import type { Order, PurchaseUnitRequest } from "@/lib/paypal/types";
 import { CURRENCY } from "./content";
+import { invoiceIdFor } from "./guarantee-terms";
 import { courseTitleOf, rubricShownFor } from "./creator-store";
 import { enrollmentIfAny } from "./enrollments";
 import { countsTowardRefund } from "./policy";
@@ -24,11 +25,7 @@ type Locked = Pick<Enrollment, "id" | "courseId" | "rubric" | "priceCents">;
 
 const lockOf = (enrollment: Pick<Enrollment, "rubric">) => enrollment.rubric ?? { version: "1", fingerprint: "" };
 
-/** "PR-v1-ada21f9fbe03-en_1a2b3c4d": unique per purchase, because PayPal refuses a reused invoice_id. */
-export function invoiceIdFor(enrollment: Pick<Enrollment, "id" | "rubric">): string {
-  const { version, fingerprint } = lockOf(enrollment);
-  return `PR-v${version}-${fingerprint}-${enrollment.id}`;
-}
+export { invoiceIdFor };
 
 /** "Sharp at Home · rubric v1 · ada21f9fbe03": the title is cut, never the terms. */
 export function itemNameFor(enrollment: Pick<Enrollment, "courseId" | "rubric">): string {

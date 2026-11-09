@@ -1,10 +1,12 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { CircleAlert, CircleCheck, Fingerprint } from "lucide-react";
+import { ChevronDown, CircleAlert, CircleCheck, CircleDashed, CircleX, Fingerprint } from "lucide-react";
 import { ReceiptCheckForm } from "@/components/course/receipt-check";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Card, CardBody, CardHeader } from "@/components/ui";
+import { enrollmentIfAny } from "@/lib/course/enrollments";
+import { fingerprintOnOrder, threeWayTicks, type TickColumn, type TickStatus } from "@/lib/course/guarantee-terms";
 import { readOrderTerms, type PayPalTermsCheck } from "@/lib/course/order-terms";
 import { checkFingerprint, rubricFingerprint, rubricOnSaleNow } from "@/lib/course/rubric-lock";
 import { SHOWN_REFUND } from "@/lib/course/shown-refund";
@@ -38,34 +40,88 @@ function PayPalRow({ terms }: { terms: PayPalTermsCheck }) {
   );
 }
 
-function CheckResult({ version, fingerprint, terms }: { version: string; fingerprint: string; terms?: PayPalTermsCheck | null }) {
+const TICK_STYLE: Record<TickStatus, { box: string; label: string }> = {
+  tick: { box: "border-emerald-200 bg-white text-emerald-900", label: "Same fingerprint" },
+  cross: { box: "border-red-200 bg-white text-red-900", label: "Differs" },
+  unread: { box: "border-zinc-200 bg-white text-zinc-600", label: "Not read" },
+};
+
+/** Receipt | Rubric on sale | PayPal, each ticked from its own read. */
+function TickColumns({ columns, verifyHref }: { columns: TickColumn[]; verifyHref: string }) {
+  return (
+    <ol className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="three-way-tick">
+      {columns.map((c) => {
+        const style = TICK_STYLE[c.status];
+        return (
+          <li key={c.key} className={`rounded-lg border px-3 py-2 ${style.box}`} data-testid={`tick-${c.key}`} data-status={c.status}>
+            <p className="flex items-center gap-1.5 font-semibold">
+              {c.status === "tick" ? <CircleCheck className="size-4 text-emerald-600" aria-hidden /> : c.status === "cross" ? <CircleX className="size-4 text-red-600" aria-hidden /> : <CircleDashed className="size-4 text-zinc-400" aria-hidden />}
+              {c.title}
+              <span className="sr-only">: {style.label}</span>
+            </p>
+            {c.fingerprint ? (
+              <p className="mt-0.5 font-mono text-base font-semibold" data-testid={`tick-${c.key}-fingerprint`}>
+                {grouped(c.fingerprint)}
+              </p>
+            ) : null}
+            <p className="mt-0.5 text-xs opacity-80">
+              {c.source}
+              {c.key === "paypal" && c.status === "unread" ? (
+                <>
+                  {" "}
+                  <Link href={verifyHref} className="underline">
+                    Open /verify
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function CheckResult({ version, fingerprint, terms, receiptSource }: { version: string; fingerprint: string; terms?: PayPalTermsCheck | null; receiptSource: string }) {
   const check = checkFingerprint({ version, fingerprint });
   // With PayPal's record read, "matches" needs all three: the receipt, the rubric on sale and PayPal's order.
   const paypalDiffers = terms?.status === "changed" || (terms?.status === "matches" && !terms.itemName?.includes(check.bought.fingerprint));
   const matches = check.status === "matches" && !paypalDiffers;
+  const columns = threeWayTicks({
+    receipt: { fingerprint: check.bought.fingerprint, source: receiptSource },
+    boughtOnFile: check.boughtOnFile,
+    onSale: { fingerprint: check.onSale.fingerprint, source: `Hashed now from rubric v${check.onSale.version}, the one this page shows.` },
+    paypal: terms ? { fingerprint: fingerprintOnOrder(terms), source: terms.status === "missing" ? "Read from PayPal: this order is from before the terms went on PayPal's record." : "Read from PayPal just now, from the order's item line." } : null,
+  });
   return (
     <div
       data-testid="fingerprint-check"
       data-status={check.status}
       className={`mb-6 rounded-xl border px-4 py-3 text-sm ${matches ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}
     >
-      <p className="flex items-center gap-2 font-semibold">
+      <p className="flex flex-wrap items-center gap-x-2 font-semibold">
         {matches ? <CircleCheck className="size-4" aria-hidden /> : <CircleAlert className="size-4" aria-hidden />}
         <span data-testid="fingerprint-verdict">{matches ? "Matches" : paypalDiffers && check.status === "matches" ? "PayPal's record differs" : "Changed since you bought"}</span>
         {terms && terms.status !== "missing" ? <span className="font-normal">{matches ? "Your receipt, the rubric on sale and PayPal's record of your order all carry it." : null}</span> : null}
       </p>
-      <p className="mt-1">
-        Your receipt says rubric v{check.bought.version}, fingerprint <code className="font-mono">{grouped(check.bought.fingerprint)}</code>. This page shows v{check.onSale.version}, fingerprint{" "}
-        <code className="font-mono">{grouped(check.onSale.fingerprint)}</code>.
-      </p>
-      <p className="mt-1">
+      <TickColumns columns={columns} verifyHref="/verify" />
+      <p className="mt-2">
         {matches
           ? "The rubric below is word for word the one you bought."
           : check.boughtOnFile
             ? `The rubric on sale now differs from yours. Your attempts are still graded on v${check.bought.version}, the one you bought.`
             : "We have no rubric with your fingerprint on file, so grading would stop rather than use different words. Contact the course team."}
       </p>
-      {terms ? <PayPalRow terms={terms} /> : null}
+      <details className="group mt-2" data-testid="check-details">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium opacity-80 hover:opacity-100 [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden /> Check it yourself
+        </summary>
+        <p className="mt-2">
+          Your receipt says rubric v{check.bought.version}, fingerprint <code className="font-mono">{grouped(check.bought.fingerprint)}</code>. This page shows v{check.onSale.version}, fingerprint{" "}
+          <code className="font-mono">{grouped(check.onSale.fingerprint)}</code>.
+        </p>
+        {terms ? <PayPalRow terms={terms} /> : null}
+      </details>
     </div>
   );
 }
@@ -80,7 +136,13 @@ async function CheckFromAddress({ searchParams, version }: { searchParams: Searc
   // Reading PayPal happens at request time, never while the page prerenders.
   if (en) await connection();
   const terms = en ? await readOrderTerms(en) : null;
-  return <CheckResult version={v ?? version} fingerprint={fp} terms={terms} />;
+  // The receipt column reads the purchase's own lock when it can, not just the address.
+  const lock = en ? enrollmentIfAny(en)?.rubric : undefined;
+  return lock ? (
+    <CheckResult version={lock.version} fingerprint={lock.fingerprint} terms={terms} receiptSource="Read from your purchase, locked when you bought." />
+  ) : (
+    <CheckResult version={v ?? version} fingerprint={fp} terms={terms} receiptSource="The fingerprint you typed from your receipt." />
+  );
 }
 
 export default function RubricPage({ searchParams }: { searchParams: Search }) {

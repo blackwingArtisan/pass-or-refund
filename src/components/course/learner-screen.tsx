@@ -23,6 +23,7 @@ import { CourseShownProvider, shownFor, useCourseShown } from "./course-shown";
 import { useCleanMode } from "./clean-mode";
 import { useJudgeMode } from "./judge-mode";
 import { Guarantee } from "./guarantee";
+import { GuaranteeStrip } from "./guarantee-strip";
 import { ContestLine, ContestStatus, RubricTerms } from "./rubric-receipt";
 
 const SAMPLE_BUTTONS: { id: SampleId; label: string }[] = [
@@ -427,22 +428,10 @@ export function LearnerScreen({ id }: { id: string }) {
       <PageHeader
         eyebrow={`Welcome, ${enrollment.learnerName}`}
         title={shown.title}
-        description={
-          enrollment.payment?.capturedCents === undefined ? undefined : (
-            <span data-testid="receipt" className="flex flex-col gap-1">
-              <span>
-                {`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}. `}
-                <Link href={`/verify?q=${encodeURIComponent(enrollment.payment.orderId)}`} className="font-medium text-brand underline" data-testid="verify-on-paypal">
-                  Verify it on PayPal
-                </Link>
-              </span>
-              <RubricTerms lock={enrollment.rubric} checkHref={shown.checkHref} enrollmentId={enrollment.id} className="text-sm" />
-            </span>
-          )
-        }
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
+          <GuaranteeStrip enrollment={enrollment} passMark={shown.passMark} checkHref={shown.checkHref} />
           {enrollment.id === SAMPLE_PASS_ID ? (
             <Notice tone="info" icon={<Award className="size-4" />} testId="sample-pass">
               <strong>Sample learner.</strong> {enrollment.learnerName} is made up, so you can see what passing looks like without passing yourself. Her answers are the course&rsquo;s strong sample answers, graded once ahead of time and added up by the same code. No PayPal payment was made.
