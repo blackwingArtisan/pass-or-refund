@@ -14,6 +14,7 @@ import { formatCents } from "@/lib/course/policy";
 import { codeNotes } from "@/lib/course/refund-case";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
+import { fitNotes, NOTE_LIMITS as L } from "./note-limits";
 import { refuse, updateRefund } from "./refund-course-purchase";
 
 export const ACCEPT_DISPUTE_CLAIM = "accept_dispute_claim";
@@ -43,8 +44,9 @@ export const acceptCourseDispute = (enrollmentId: string) =>
     description: "The learner opened a PayPal dispute. Propose accepting it, which refunds them in full through PayPal. It pauses for a person to approve, and no money moves until they do. Give your reasons: they are shown to the person deciding.",
     risk: "money",
     schema: z.object({
-      reasons: z.array(z.string().min(1).max(240)).min(1).max(5).describe("Why this refund is due, from the policy check. Plain sentences for the person deciding."),
+      reasons: z.array(z.string().min(1).max(L.reasons.each)).min(1).max(L.reasons.items).describe(`Why this refund is due, from the policy check. Plain sentences for the person deciding. At most ${L.reasons.items} reasons of ${L.reasons.each} characters each.`),
     }),
+    fit: fitNotes,
     title: () => `Propose accepting the PayPal dispute for ${course.title}`,
     impact: async (i, ctx) => {
       const decided = getApprovals().list({ runId: ctx.runId }).some((a) => a.tool === ACCEPT_DISPUTE_CLAIM && a.state !== "pending");
