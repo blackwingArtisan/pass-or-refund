@@ -3,7 +3,7 @@
 import { retryAfterOf, showError } from "@/components/error-toast";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Award, BookOpenCheck, CircleAlert, Clock, Send, ShieldCheck, TimerReset } from "lucide-react";
+import { Award, BookOpenCheck, ChevronDown, CircleAlert, Clock, Receipt, Send, ShieldCheck, TimerReset } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import type { ApiError } from "@/components/kit/kit-provider";
@@ -173,7 +173,6 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
     ["Refund status", refund.refundStatus, "refund-status"],
     ["Amount", refund.refundedCents === undefined ? undefined : formatCents(refund.refundedCents), "refund-amount"],
     ["Payment status", refund.captureStatus, "capture-status"],
-    ...(refund.debugId ? [["PayPal debug_id", refund.debugId, "refund-debug-id"]] : []),
   ];
   return (
     <div data-testid="refund-issued" className="rounded-2xl border-2 border-brand-200 bg-gradient-to-b from-brand-50 to-white px-6 py-8">
@@ -217,6 +216,34 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The PayPal calls and guarded steps behind this enrollment, closed by default: a learner sees their
+ * course, and opens this for the evidence (HTTP codes, debug ids). The course team's pages keep it open.
+ */
+function PayPalDrawer({ refundDebugId, children }: { refundDebugId?: string; children: ReactNode }) {
+  return (
+    <details data-testid="paypal-drawer" className="group rounded-2xl border border-zinc-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2">
+          <Receipt className="size-4 text-brand" aria-hidden /> What PayPal did
+        </span>
+        <ChevronDown className="size-4 text-zinc-500 transition-transform group-open:rotate-180" aria-hidden />
+      </summary>
+      <div className="space-y-3 border-t border-zinc-100 p-3">
+        {refundDebugId ? (
+          <p className="px-1 text-xs text-zinc-500">
+            Refund call debug_id{" "}
+            <code data-testid="refund-debug-id" className="font-mono text-zinc-900">
+              {refundDebugId}
+            </code>
+          </p>
+        ) : null}
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -433,8 +460,10 @@ export function LearnerScreen({ id }: { id: string }) {
           {canAttempt && !enrollment.nextAttemptAt ? <Quiz key={enrollment.attempts.length} attemptNumber={enrollment.attempts.length + 1} grading={grading} busy={busy} problem={gradingProblem} onSubmit={submit} /> : null}
         </div>
         <div className="min-w-0 lg:sticky lg:top-6 lg:self-start">
-          {/* The feed holds everyone's payments, which would contradict "PayPal hasn't taken any money". */}
-          <ToolCallTimeline steps={enrollment.status === "unpaid" ? [] : timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and guarded steps show up here as they happen." />
+          <PayPalDrawer refundDebugId={enrollment.refund?.debugId}>
+            {/* The feed holds everyone's payments, which would contradict "PayPal hasn't taken any money". */}
+            <ToolCallTimeline steps={enrollment.status === "unpaid" ? [] : timelineSteps} className="max-h-[760px] min-h-[320px]" emptyDescription="PayPal calls and guarded steps show up here as they happen." />
+          </PayPalDrawer>
         </div>
       </div>
     </>

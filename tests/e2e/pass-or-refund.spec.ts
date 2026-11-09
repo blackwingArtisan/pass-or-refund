@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
+import { GUARANTEE_TERMS } from "../../src/lib/course/policy";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
@@ -165,6 +166,13 @@ async function passcodeFromHome(request: APIRequestContext) {
 async function unlockTeam(request: APIRequestContext) {
   const res = await request.post("/api/team/session", { data: { passcode: await passcodeFromHome(request) } });
   expect(res.ok()).toBe(true);
+}
+
+/** Opens the "What PayPal did" drawer on a learner page, where the PayPal calls wait closed. */
+async function openPayPalDrawer(page: Page) {
+  const drawer = page.getByTestId("paypal-drawer").filter({ visible: true });
+  if ((await drawer.getAttribute("open")) === null) await drawer.locator("summary").click();
+  return drawer;
 }
 
 const EMAIL_SHAPE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
@@ -366,6 +374,38 @@ test.describe("the story on the first screen", () => {
     await visitor.close();
   });
 
+  test("learner pages keep PayPal's calls in a closed What PayPal did drawer, the course team's stay open, and the guarantee is four lines", { tag: "@live" }, async ({ page, request }) => {
+    // HTTP codes, debug ids and raw PayPal paths are evidence for whoever opens the drawer, not the learner's page.
+    const evidence = /HTTP \d{3}|debug_id|debug id|\b(GET|POST|PATCH) \/v[12]\//i;
+    await page.goto("/course");
+    const guarantee = page.getByTestId("guarantee").filter({ visible: true });
+    await expect(guarantee.locator("li")).toHaveCount(4);
+    expect(await page.locator("main").innerText()).not.toMatch(evidence);
+    await guarantee.getByTestId("guarantee-full-terms").click();
+    await expect(page).toHaveURL(/\/terms$/);
+    await expect(page.getByTestId("guarantee-terms").locator("li")).toHaveCount(GUARANTEE_TERMS.length);
+
+    const id = await buy(page, request, "Della Drawer");
+    const drawer = page.getByTestId("paypal-drawer").filter({ visible: true });
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText("What PayPal did");
+    expect(await drawer.getAttribute("open")).toBeNull();
+    await expect(page.getByTestId("tool-call-timeline")).toBeHidden();
+    // The capture's steps have reached the page, behind the closed drawer.
+    await expect(page.getByTestId("step-title").first()).toBeAttached({ timeout: 20_000 });
+    expect(await page.locator("main").innerText()).not.toMatch(evidence);
+    await openPayPalDrawer(page);
+    await expect(drawer.getByTestId("tool-call-timeline")).toBeVisible();
+    await expect(drawer.getByTestId("tool-call-timeline")).toContainText(/HTTP \d{3}/, { timeout: 20_000 });
+
+    // The course team's page keeps its timeline open.
+    await unlockTeam(page.request);
+    await page.goto("/team");
+    await expect(page.getByTestId("tool-call-timeline").filter({ visible: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("paypal-drawer")).toHaveCount(0);
+    void id;
+  });
+
   test("learner and creator screens show only the product: judge tools wait in one For judges menu, and clean mode hides it", { tag: "@live" }, async ({ browser, request }) => {
     const baseURL = test.info().project.use.baseURL!;
     // The activity timeline keeps its per-call PayPal and AI labels: that is the product's evidence, not judge chrome.
@@ -496,6 +536,7 @@ test.describe("the story on the first screen", () => {
     }
     if ((await mode(request)) === "mock") {
       await page.goto(`/learn/${id}`);
+      await openPayPalDrawer(page);
       const webhook = page.getByTestId("step-title").filter({ hasText: "PAYMENT.CAPTURE.COMPLETED" }).first();
       await expect(webhook).toBeVisible({ timeout: 20_000 });
       expect(await webhook.innerHTML()).toContain("PAYMENT.<wbr>CAPTURE.<wbr>COMPLETED");
@@ -644,8 +685,10 @@ test.describe("mock-safe flows", () => {
 
     const { refund } = await enrollmentOf(request, id);
     await expect(page.getByTestId("refund-id")).toHaveText(refund!.refundId!);
-    // PayPal's debug id for the refund call, on the card beside the refund id.
+    // PayPal's debug id for the refund call, in the What PayPal did drawer under the refund card.
     expect(refund!.debugId).toMatch(/^\w+$/);
+    await expect(page.getByTestId("refund-debug-id")).toBeHidden();
+    await openPayPalDrawer(page);
     await expect(page.getByTestId("refund-debug-id")).toHaveText(refund!.debugId!);
     if (sandbox) console.log("Refund debug_id:", refund!.debugId);
     if (sandbox) {
@@ -1157,6 +1200,7 @@ test.describe("mock-safe flows", () => {
     expect((await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId }, ...asLearner })).ok()).toBe(true);
 
     await page.goto(`/learn/${enrollmentId}`);
+    await openPayPalDrawer(page);
     const timeline = page.getByTestId("tool-call-timeline").filter({ visible: true });
     const folded = timeline.getByTestId("timeline-repeat").filter({ hasText: "Checked order" }).first();
     await expect(folded).toBeVisible({ timeout: 20_000 });
@@ -1238,6 +1282,7 @@ test.describe("mock-safe flows", () => {
     await attempt(page, "fail1", 1);
     expect((await request.post(`/api/dev/mock/dispute/${id}`)).ok()).toBe(true);
     await expect(page.getByTestId("learner-dispute")).toContainText("You opened a PayPal dispute on this payment");
+    await openPayPalDrawer(page);
     await expect(page.getByTestId("tool-call-timeline").getByText("CUSTOMER.DISPUTE.CREATED")).toBeVisible();
     await page.goto("/team");
     await expect(page.getByTestId(`enrollment-${id}`).getByTestId("team-dispute")).toContainText("doesn't cover this yet");

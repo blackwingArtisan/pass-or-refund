@@ -10,6 +10,14 @@ export const ATTEMPT_GAP_HOURS = 24;
 /** Two attempts sharing this much of their wording are the same attempt. Keeps honest rewrites apart. */
 export const NEAR_COPY_SIMILARITY = 0.9;
 
+/** The guarantee in four lines, shown before purchase and on the fail screen; GUARANTEE_TERMS is the full text on /terms. */
+export const GUARANTEE_SUMMARY = [
+  `Fail the final check twice, with two complete attempts ${ATTEMPT_GAP_HOURS} hours apart, and you get every cent back.`,
+  "Review your study list before you try again, or that attempt won't count.",
+  "A person on the course team approves every refund before any money moves. If the course team declines, they have to say why.",
+  "One refund per PayPal account and email, and trying to trick the grader voids the guarantee.",
+];
+
 /** Shown before purchase and on the fail screen. */
 export const GUARANTEE_TERMS = [
   "Fail the final check twice and you get every cent back.",
