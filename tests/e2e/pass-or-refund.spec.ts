@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { GUARANTEE_TERMS } from "../../src/lib/course/policy";
+import { samples } from "../../src/lib/course/samples";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
 import type { EnrollmentView } from "../../src/lib/course/types";
@@ -94,9 +95,12 @@ async function attempt(page: Page, sample: string, number: number) {
   return Number(await page.getByTestId(`score-${number}`).innerText().then((t) => t.split("/")[0].trim()));
 }
 
-/** Ticks off the study list one item at a time, so the next attempt can count toward a refund. */
-async function review(page: Page) {
-  await expect(page.getByTestId("mark-reviewed")).toBeDisabled();
+/**
+ * Ticks off the study list one item at a time, so the next attempt can count toward a refund.
+ * The sample answers always miss lines; a creator's course graded by hand-typed rules may miss none.
+ */
+async function review(page: Page, listed = true) {
+  if (listed) await expect(page.getByTestId("mark-reviewed")).toBeDisabled();
   const items = page.locator('[data-testid^="study-item-"]');
   for (const item of await items.all()) {
     await item.click();
@@ -111,8 +115,8 @@ async function skipTheWait(page: Page) {
   await expect(page.getByTestId("submit-attempt")).toBeVisible();
 }
 
-async function studyThenRetry(page: Page) {
-  await review(page);
+async function studyThenRetry(page: Page, listed = true) {
+  await review(page, listed);
   await skipTheWait(page);
 }
 
@@ -456,6 +460,69 @@ test.describe("the story on the first screen", () => {
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     console.log("Home page height at 1440:", height, "px =", (height / 900).toFixed(2), "screens");
     expect(height).toBeLessThanOrEqual(900 * 2.4);
+  });
+
+  test("a learner buys a creator-made course at the creator's price, fails twice and is refunded through PayPal, graded on the rubric the purchase locked", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000);
+    // The creator's course: the sample rubric's questions under a new title (so a new fingerprint), at $29.
+    const sampleRubric = await (await request.get("/api/rubric/1")).json();
+    const title = `Knife Care Basics ${Date.now().toString(36)}`;
+    const made = await request.post("/api/creator/courses", { data: { pasted: JSON.stringify({ ...sampleRubric, title }), price: "29" } });
+    expect(made.ok()).toBe(true);
+    const course = (await made.json()) as { id: string; fingerprint: string; path: string; priceCents: number };
+    expect(course.priceCents).toBe(2900);
+
+    await page.goto(`${course.path}?test-card=1`);
+    const buyBox = page.getByTestId("creator-buy");
+    await expect(buyBox).toContainText("$29.00");
+    await expect(buyBox.getByTestId("guarantee")).toContainText("The $29.00 guarantee");
+    await buyBox.getByTestId("learner-name").fill("Cree Ator Buyer");
+    await buyBox.getByTestId("learner-email").fill(newEmail("Cree Ator Buyer"));
+    if ((await mode(request)) === "sandbox") await buyBox.getByTestId("sandbox-test-card").click();
+    else {
+      await buyBox.getByTestId("simulate-paypal-approval").click();
+      await page.getByTestId("mock-approve").click();
+    }
+    await page.waitForURL(/\/learn\/en_/, { timeout: 60_000 });
+    const id = page.url().split("/learn/")[1];
+    const bought = await enrollmentOf(request, id);
+    expect(bought).toMatchObject({ courseId: course.id, courseSlug: course.id, priceCents: 2900, rubric: { fingerprint: course.fingerprint } });
+    expect(bought.payment?.capturedCents).toBe(2900);
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByTestId("receipt")).toContainText("$29.00 paid through PayPal");
+    await expect(page.getByTestId("rubric-fingerprint").first()).toHaveText(course.fingerprint.match(/.{4}/g)!.join(" "));
+    // No prepared answers on a creator's course: the learner writes them.
+    await expect(page.getByTestId("sample-buttons")).toHaveCount(0);
+
+    const answerWith = async (answers: Record<string, string>, number: number) => {
+      for (const [q, text] of Object.entries(answers)) await page.getByTestId(`answer-${q}`).fill(text);
+      await submitAttempt(page);
+      await expect(page.getByTestId(`attempt-${number}`)).toBeVisible({ timeout: 120_000 });
+    };
+    await answerWith(samples.fail1, 1);
+    await expect(page.getByTestId("fail-count")).toContainText("1 of 2 completed attempts");
+    await studyThenRetry(page, false);
+    await answerWith(samples.fail2, 2);
+    await expect(page.getByTestId("refund-waiting")).toBeVisible({ timeout: 90_000 });
+
+    await approveOnTeam(page, id);
+    await page.goto(`/learn/${id}`);
+    await expect(page.getByTestId("refund-issued")).toBeVisible();
+    await expect(page.getByTestId("refund-amount")).toHaveText("$29.00");
+    await expect(page.getByTestId("refund-status")).toHaveText(/COMPLETED|PENDING/, { timeout: 60_000 });
+    const { payment, refund } = await enrollmentOf(request, id);
+    expect(refund?.refundedCents).toBe(2900);
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!, refund!.refundId);
+      console.log("PayPal re-read:", JSON.stringify({ creatorCourse: [course.id, paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount?.value], refund: [paypal.refund?.id, paypal.refund?.status, paypal.refund?.amount?.value] }));
+      expect(paypal.capture.amount?.value).toBe("29.00");
+      expect(paypal.capture.status).toBe("REFUNDED");
+      expect(paypal.refund?.status).toBe("COMPLETED");
+      expect(paypal.refund?.amount?.value).toBe("29.00");
+    }
+    // The sample course's cohort numbers leave creators' courses out.
+    const cohort = await cohortOf(request);
+    expect(JSON.stringify(cohort)).not.toContain(course.id);
   });
 
   test("a creator sets up their own rubric on /creator: plain-word fixes, a fingerprint that changes with the words, and a link graded against it", { tag: "@live" }, async ({ page }) => {

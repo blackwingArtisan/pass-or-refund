@@ -8,7 +8,8 @@ import { route } from "@/lib/http";
 export const GET = route(async (req) => {
   const sample = readSampleCohort();
   // Test-suite buyers would move the numbers judges see, so they only count for a test run.
-  const real = listEnrollments({ includeTestRuns: isTestRun(req) });
+  // The cohort is the sample course's: creators' own courses have their own rubrics.
+  const real = listEnrollments({ includeTestRuns: isTestRun(req) }).filter((e) => !e.courseId);
   const cohort = buildCohort([...real, ...sample]);
   const realLearners = real.filter((e) => e.status !== "unpaid").length;
   return {

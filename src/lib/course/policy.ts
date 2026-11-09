@@ -37,13 +37,15 @@ interface AttemptFacts {
   outcome: string;
   score: number;
   answers: Record<string, string>;
+  questionIds?: string[];
   flagged: boolean;
   reviewedStudyList: boolean;
   nearCopyOf?: number;
 }
 
-export function everyQuestionAnswered(answers: Record<string, string>): boolean {
-  return rubric.questions.every((q) => (answers[q.id] ?? "").trim() !== "");
+/** Every question asked has an answer. The questions are the sample course's unless given. */
+export function everyQuestionAnswered(answers: Record<string, string>, questionIds: string[] = rubric.questions.map((q) => q.id)): boolean {
+  return questionIds.every((id) => (answers[id] ?? "").trim() !== "");
 }
 
 interface WithItems<Item> {
@@ -60,7 +62,7 @@ export const missedItems = <Item extends { verdict: string }>(attempt: WithItems
 export const shortfallItems = <Item extends { verdict: string }>(attempt: WithItems<Item>) => shownItems(attempt).filter((item) => item.verdict !== "met");
 
 /** Every question answered, enough points to show a real try, and written afresh. */
-export const attemptComplete = (attempt: Pick<AttemptFacts, "score" | "answers" | "nearCopyOf">) => everyQuestionAnswered(attempt.answers) && attempt.score >= MIN_POINTS_FOR_REFUND && attempt.nearCopyOf === undefined;
+export const attemptComplete = (attempt: Pick<AttemptFacts, "score" | "answers" | "nearCopyOf" | "questionIds">) => everyQuestionAnswered(attempt.answers, attempt.questionIds) && attempt.score >= MIN_POINTS_FOR_REFUND && attempt.nearCopyOf === undefined;
 
 const wordsOf = (answers: Record<string, string>) => Object.values(answers).join(" ").toLowerCase().match(/[a-z0-9]+/g) ?? [];
 

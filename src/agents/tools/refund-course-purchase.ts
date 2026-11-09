@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { getApprovals } from "@/lib/agent/approvals";
 import { defineTool } from "@/lib/agent/tool";
-import { course } from "@/lib/course/content";
+import { courseTitleOf } from "@/lib/course/creator-store";
 import { guaranteeFor, readBackRefund, requireEnrollment, saveEnrollment } from "@/lib/course/enrollments";
 import { formatCents, refundAmountProblem } from "@/lib/course/policy";
 import { codeNotes } from "@/lib/course/refund-case";
@@ -65,7 +65,7 @@ export const refundCoursePurchase = (enrollmentId: string) =>
       team_summary: z.string().min(1).max(600).optional().describe("Two or three sentences for the person deciding: the scores, the rubric lines the learner fell short on, any contest and how it was ruled."),
       learner_note: z.string().min(1).max(500).optional().describe("Two or three kind sentences the learner reads: sorry, which rubric lines held them back (never their answers), and that the refund comes once a person approves."),
     }),
-    title: () => `Propose a refund for ${course.title}`,
+    title: () => `Propose a refund for ${courseTitleOf(requireEnrollment(enrollmentId))}`,
     impact: async (i, ctx) => {
       // Once the agent has sent the case to a person, it waits for them; nothing is recorded, so their review stays clean.
       if (requireEnrollment(enrollmentId).status === "refund_review") throw new HttpError(409, "This case is with the course team for review, so wait for their decision.", "conflict");
@@ -80,12 +80,12 @@ export const refundCoursePurchase = (enrollmentId: string) =>
         proposal: { amountValue: i.amount, reasons: i.reasons, proposedAt: new Date().toISOString(), teamSummary: i.team_summary ?? fallback.teamSummary, learnerNote: i.learner_note ?? fallback.learnerNote },
       });
       const { learnerName } = requireEnrollment(enrollmentId);
-      return { amount, summary: `Refund ${formatCents(cents)} to ${learnerName}, who failed ${course.title} twice` };
+      return { amount, summary: `Refund ${formatCents(cents)} to ${learnerName}, who failed ${courseTitleOf(requireEnrollment(enrollmentId))} twice` };
     },
     execute: async (i, ctx) => {
       const { amount, captureId } = await checked(enrollmentId, i.amount, ctx.paypal);
       const call: CallMeta = {};
-      const refund = await runWithCallMeta(call, () => ctx.paypal.payments.refundCapture(captureId, { amount, note_to_payer: `Refund for ${course.title}. Sorry we let you down.` }, { requestId: ctx.requestId }));
+      const refund = await runWithCallMeta(call, () => ctx.paypal.payments.refundCapture(captureId, { amount, note_to_payer: `Refund for ${courseTitleOf(requireEnrollment(enrollmentId))}. Sorry we let you down.` }, { requestId: ctx.requestId }));
       // Saved before the read-back: if that read fails, the record must still say the money moved.
       updateRefund(enrollmentId, { refundId: refund.id, debugId: call.debugId, refundStatus: refund.status, refundedCents: toMinor(refund.amount.value, refund.amount.currency_code), error: undefined }, "refunded");
 

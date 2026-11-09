@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { rubric as sample } from "@/lib/course/content";
 import { creatorCourse, creatorCourses, gradeCreatorAttempt, publishCreatorCourse } from "@/lib/course/creator-courses";
-import { checkRubric, formToInput, parseLine, parsePasted } from "@/lib/course/creator-rubric";
+import { checkPrice, checkRubric, formToInput, parseLine, parsePasted } from "@/lib/course/creator-rubric";
+import { boughtCreatorRubric } from "@/lib/course/creator-store";
+import { createEnrollment, viewEnrollment } from "@/lib/course/enrollments";
+import { attemptComplete } from "@/lib/course/policy";
 import { rubricFingerprint, rubricOnSale, rubricText } from "@/lib/course/rubric-lock";
 import type { GradeOnce } from "@/lib/grading/grade";
 
@@ -117,5 +120,33 @@ describe("a creator's course at its link", () => {
     expect(run.items.map((i) => i.id)).toEqual(["q1a", "q1b", "q2a"]);
     expect(run.items.every((i) => i.quote.length > 0)).toBe(true);
     expect(graded.outcome).toBe("fail");
+  });
+});
+
+describe("buying a creator's course", () => {
+  it("prices it in whole dollars from $1 to $49, with $49 when left out", () => {
+    expect(checkPrice("29")).toEqual({ ok: true, cents: 2900 });
+    expect(checkPrice("$5")).toEqual({ ok: true, cents: 500 });
+    expect(checkPrice(undefined)).toEqual({ ok: true, cents: 4900 });
+    for (const bad of ["0", "50", "12.50", "free"]) expect(checkPrice(bad)).toMatchObject({ ok: false, problem: "The price has to be a whole number of dollars from $1 to $49." });
+  });
+
+  it("opens an enrollment at the creator's price with that rubric's fingerprint locked, and grades on it", async () => {
+    const course = publishCreatorCourse({ ...bread, title: "Bread at Home, for sale" }, "", 2900);
+    expect(creatorCourse(course.id).priceCents).toBe(2900);
+    const enrollment = createEnrollment("Pat Baker", "pat.baker@example.com", { courseId: course.id });
+    expect(enrollment).toMatchObject({ courseId: course.id, courseSlug: course.id, priceCents: 2900, rubric: { fingerprint: course.fingerprint } });
+    expect(boughtCreatorRubric(course.id, enrollment.rubric!.fingerprint)).toEqual(course.rubric);
+    expect(() => boughtCreatorRubric(course.id, "000000000000")).toThrow(/no longer matches/);
+    // The learner's screens get the creator's title and rubric.
+    expect(viewEnrollment(enrollment).creatorCourse).toMatchObject({ id: course.id, title: "Bread at Home, for sale", path: `/c/${course.id}` });
+  });
+
+  it("counts an attempt complete when every question this course asked is answered, two here rather than the sample's four", () => {
+    const attempt = { score: 40, answers: { q1: "Doubled", q2: "Steam" }, nearCopyOf: undefined, questionIds: ["q1", "q2"] };
+    expect(attemptComplete(attempt)).toBe(true);
+    expect(attemptComplete({ ...attempt, answers: { q1: "Doubled", q2: " " } })).toBe(false);
+    // Without question ids it is the sample course, whose q3 and q4 are blank here.
+    expect(attemptComplete({ ...attempt, questionIds: undefined })).toBe(false);
   });
 });

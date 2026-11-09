@@ -1,6 +1,7 @@
 import { Badge, type Tone } from "@/components/ui";
 import { learnerLineText } from "@/lib/course/contest-rules";
-import { lessonForItem, lessons, rubric } from "@/lib/course/content";
+import { lessonForItem, lessons } from "@/lib/course/content";
+import { useCourseShown } from "./course-shown";
 import type { Attempt } from "@/lib/course/types";
 import type { Outcome } from "@/lib/grading/decide";
 import type { ScoredItem, Verdict } from "@/lib/grading/frozen/score-items";
@@ -40,7 +41,8 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
   const run = attempt.runs[attempt.shownRun];
   const outcome = OUTCOME[attempt.outcome];
   const missed = run.items.filter((item) => item.verdict === "not_met");
-  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id)])));
+  const { rubric, sample } = useCourseShown();
+  const itemText = Object.fromEntries(rubric.questions.flatMap((q) => q.items.map((item) => [item.id, learnerLineText(item.id, rubric)])));
 
   return (
     <div data-testid={`attempt-${attempt.number}`} className="space-y-5">
@@ -94,7 +96,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
               <ul className="divide-y divide-zinc-100">
                 {question.items.map((item) => {
                   const scored = run.items.find((i) => i.id === item.id);
-                  return scored ? <ItemRow key={item.id} item={scored} text={learnerLineText(item.id)} points={item.points} /> : null;
+                  return scored ? <ItemRow key={item.id} item={scored} text={learnerLineText(item.id, rubric)} points={item.points} /> : null;
                 })}
               </ul>
               {caps.map((cap) => (
@@ -112,7 +114,7 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
           <h4 className="font-semibold text-zinc-900">Your study list</h4>
           <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
             {missed.map((item) => {
-              const lesson = lessons.find((l) => l.number === lessonForItem[item.id]);
+              const lesson = sample ? lessons.find((l) => l.number === lessonForItem[item.id]) : undefined;
               return (
                 <li key={item.id}>
                   {itemText[item.id]}. {lesson ? <a href={`#lesson-${lesson.number}`} className="font-medium text-brand hover:underline">Lesson {lesson.number}: {lesson.name}</a> : null}

@@ -6,13 +6,15 @@ import { CircleAlert, Copy, Fingerprint, Plus, Trash2 } from "lucide-react";
 import { ApiError, useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button, Card, CardBody, CardHeader, Field, Input, Textarea } from "@/components/ui";
-import { formToInput, LIMITS, type RubricForm } from "@/lib/course/creator-rubric";
+import { formToInput, LIMITS, PRICE_DOLLARS, type RubricForm } from "@/lib/course/creator-rubric";
+import { formatCents } from "@/lib/course/policy";
 
 interface Published {
   id: string;
   fingerprint: string;
   path: string;
   title: string;
+  priceCents: number;
 }
 
 /** "3f2a9c1e04b7" -> "3f2a 9c1e 04b7", easier to compare by eye. */
@@ -31,6 +33,7 @@ export function CreatorScreen() {
   const [form, setForm] = useState<RubricForm>(STARTER);
   const [pasted, setPasted] = useState("");
   const [notes, setNotes] = useState("");
+  const [price, setPrice] = useState(String(PRICE_DOLLARS.default));
   const [problems, setProblems] = useState<string[]>([]);
   const [published, setPublished] = useState<Published | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +47,7 @@ export function CreatorScreen() {
     setProblems([]);
     setPublished(null);
     try {
-      const json = mode === "json" ? { pasted, notes } : { rubric: formToInput(form), notes };
+      const json = mode === "json" ? { pasted, notes, price } : { rubric: formToInput(form), notes, price };
       setPublished(await kitFetch<Published>("/api/creator/courses", { method: "POST", json }));
     } catch (error) {
       const listed = error instanceof ApiError ? (error.body.error as { problems?: string[] } | undefined)?.problems : undefined;
@@ -134,6 +137,9 @@ export function CreatorScreen() {
                 <Textarea id="creator-json" data-testid="creator-json" rows={14} value={pasted} onChange={(e) => setPasted(e.target.value)} className="font-mono text-[13px]" />
               </Field>
             )}
+            <Field label="Price in dollars" hint={`From $${PRICE_DOLLARS.min} to $${PRICE_DOLLARS.max}. Learners pay through PayPal, with the same refund guarantee as the sample course.`} htmlFor="creator-price">
+              <Input id="creator-price" data-testid="creator-price" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} className="max-w-[140px]" />
+            </Field>
             <Field label="What the course teaches (optional)" hint="The grader reads this with the rubric, like the sample course's lessons." htmlFor="creator-notes">
               <Textarea id="creator-notes" data-testid="creator-notes" rows={3} maxLength={LIMITS.notesChars} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
@@ -158,7 +164,7 @@ export function CreatorScreen() {
         <div className="space-y-4">
           {published ? (
             <Card>
-              <CardHeader title="Your course is ready" description={published.title} />
+              <CardHeader title="Your course is ready" description={`${published.title}, ${formatCents(published.priceCents)}`} />
               <CardBody className="space-y-3 text-sm">
                 <div>
                   <p className="text-xs text-zinc-500">Rubric fingerprint</p>
@@ -192,7 +198,7 @@ export function CreatorScreen() {
             <CardBody className="space-y-2 text-sm text-zinc-600">
               <p className="font-semibold text-zinc-900">What this sets up</p>
               <p>A course page with your public rubric, its fingerprint and the final check, graded by the same sealed grader as the sample course, with code adding up the points.</p>
-              <p>No account is needed. Selling through PayPal and paying creators aren&rsquo;t built yet: the sample course shows the full purchase and refund.</p>
+              <p>No account is needed. Learners buy at your link through PayPal, under the same guarantee: two honest fails and PayPal refunds them, after a person approves. Paying creators out isn&rsquo;t built yet.</p>
             </CardBody>
           </Card>
         </div>

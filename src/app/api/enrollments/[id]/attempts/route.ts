@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { rubric } from "@/lib/course/content";
 import { submitAttempt } from "@/lib/course/attempts";
 import { viewEnrollment } from "@/lib/course/enrollments";
 import { MAX_ANSWER_CHARS } from "@/lib/course/policy";
 import { getContext } from "@/lib/events/bus";
 import { readJson, route } from "@/lib/http";
 
-const Body = z.object({ answers: z.object(Object.fromEntries(rubric.questions.map((q) => [q.id, z.string().max(MAX_ANSWER_CHARS)]))) });
+/** Answers by question id: the sample course's four, or up to a creator's six. Grading keeps only the questions the course asks. */
+const Body = z.object({ answers: z.record(z.string().regex(/^q[1-9]$/), z.string().max(MAX_ANSWER_CHARS)) });
 
 /** Grades one attempt. A second completed fail sends the refund to the approval gate. */
 export const POST = route<RouteContext<"/api/enrollments/[id]/attempts">>(

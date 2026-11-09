@@ -8,7 +8,8 @@ import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import { singleton } from "@/lib/singleton";
-import { course, COURSE_PRICE_CENTS, CURRENCY } from "./content";
+import { course, CURRENCY } from "./content";
+import { creatorCourse } from "./creator-store";
 import { enrollmentChannel } from "./scope";
 import { createEnrollment, recoveredUnstartedFor, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
 import type { Enrollment, Payment } from "./types";
@@ -33,7 +34,7 @@ function fromCompletedOrder(enrollment: Enrollment, order: Order): Enrollment | 
   const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
   if (order.status !== "COMPLETED" || capture?.status !== "COMPLETED") return null;
   const cents = toMinor(capture.amount.value, capture.amount.currency_code);
-  if (cents !== COURSE_PRICE_CENTS) return null;
+  if (cents !== enrollment.priceCents) return null;
   return recordPayment(enrollment, { orderId: order.id, orderStatus: order.status, captureId: capture.id, captureStatus: capture.status, capturedCents: cents, paidAt: new Date().toISOString(), payerId: payerIdOf(order), payerEmail: payerEmailOf(order), recovered: true });
 }
 
@@ -60,10 +61,10 @@ async function paidAtPayPal(enrollment: Enrollment): Promise<Enrollment> {
  * Before a new order: has this learner already paid, or said yes in PayPal, on a checkout we lost
  * track of? Then they carry on with that one, and PayPal never sees a second payment.
  */
-export async function resumePurchase(learnerEmail: string, channel: string): Promise<Enrollment | null> {
-  const recovered = recoveredUnstartedFor(learnerEmail);
+export async function resumePurchase(learnerEmail: string, channel: string, courseSlug: string = course.slug): Promise<Enrollment | null> {
+  const recovered = recoveredUnstartedFor(learnerEmail, courseSlug);
   if (recovered) return recovered;
-  for (const enrollment of unpaidFor(learnerEmail).slice(0, CHECKOUTS_TO_RECHECK)) {
+  for (const enrollment of unpaidFor(learnerEmail, courseSlug).slice(0, CHECKOUTS_TO_RECHECK)) {
     const orderId = enrollment.payment!.orderId;
     const order = await getPayPal().orders.get(orderId).catch(() => null);
     if (!order) continue;
@@ -74,15 +75,16 @@ export async function resumePurchase(learnerEmail: string, channel: string): Pro
   return null;
 }
 
-/** The amount comes from the course, never the browser. */
-export async function startPurchase(learnerName: string, learnerEmail: string, opts: { testRun?: boolean } = {}): Promise<{ enrollment: Enrollment; orderId: string }> {
+/** The amount comes from the course (the sample course, or a creator's at their price), never the browser. */
+export async function startPurchase(learnerName: string, learnerEmail: string, opts: { testRun?: boolean; courseId?: string } = {}): Promise<{ enrollment: Enrollment; orderId: string }> {
   const created = createEnrollment(learnerName, learnerEmail, opts);
+  const description = opts.courseId ? `${creatorCourse(opts.courseId).rubric.title} (a creator's course on Pass or Refund)` : `${course.title} by ${course.creator}`;
   // On the learner's own timeline, so it starts where the money does: Create order, then Capture.
   const order = await withContext({ channel: enrollmentChannel(created.id) }, () =>
     getPayPal().orders.create(
       {
         intent: "CAPTURE",
-        purchase_units: [{ amount: moneyFromMinor(COURSE_PRICE_CENTS, CURRENCY), description: `${course.title} by ${course.creator}`, custom_id: created.id }],
+        purchase_units: [{ amount: moneyFromMinor(created.priceCents, CURRENCY), description, custom_id: created.id }],
       },
       { requestId: `order-${created.id}` },
     ),

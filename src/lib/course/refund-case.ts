@@ -4,7 +4,7 @@
  * rule needed extra grades or a person. Code decides which cases may go to a person for review;
  * the agent only chooses within that. Server only.
  */
-import { course } from "./content";
+import { courseTitleOf, rubricShownFor } from "./creator-store";
 import { learnerLineText } from "./contest-rules";
 import { formatCents, shortfallItems } from "./policy";
 import type { Enrollment } from "./types";
@@ -22,14 +22,15 @@ export interface RefundCase {
 }
 
 export function refundCaseFor(enrollment: Enrollment): RefundCase {
+  const rubric = rubricShownFor(enrollment);
   const shortfall = enrollment.attempts.flatMap((attempt) =>
-    shortfallItems(attempt).map((item) => ({ attempt: attempt.number, line: learnerLineText(item.id), verdict: VERDICT[item.verdict as keyof typeof VERDICT] ?? item.verdict })),
+    shortfallItems(attempt).map((item) => ({ attempt: attempt.number, line: learnerLineText(item.id, rubric), verdict: VERDICT[item.verdict as keyof typeof VERDICT] ?? item.verdict })),
   );
   const c = enrollment.contest;
   const contest = c
     ? {
         attempt: c.attempt,
-        line: learnerLineText(c.itemId),
+        line: learnerLineText(c.itemId, rubric),
         learner_wrote: c.note,
         ruling: c.withdrawnAt ? "withdrawn when the learner took the retake" : !c.ruling ? "not ruled on yet" : c.ruling.upheld ? `upheld: the score went from ${c.ruling.scoreBefore} to ${c.ruling.scoreAfter}` : `not upheld: ${c.ruling.note}`,
       }
@@ -61,8 +62,8 @@ export function codeNotes(enrollment: Enrollment): { learnerNote: string; teamSu
   const misses = topMisses(rc, 2);
   const amount = formatCents(enrollment.payment?.capturedCents ?? enrollment.priceCents);
   const learnerNote = misses.length
-    ? `Sorry ${course.title} didn't get you there. Your answers fell short most on: ${misses.join("; ")}. Your ${amount} is on its way back through PayPal once the course team approves.`
-    : `Sorry ${course.title} didn't get you there. Your ${amount} is on its way back through PayPal once the course team approves.`;
+    ? `Sorry ${courseTitleOf(enrollment)} didn't get you there. Your answers fell short most on: ${misses.join("; ")}. Your ${amount} is on its way back through PayPal once the course team approves.`
+    : `Sorry ${courseTitleOf(enrollment)} didn't get you there. Your ${amount} is on its way back through PayPal once the course team approves.`;
   const teamSummary = `Two complete fails (${scores}).${misses.length ? ` Fell short most on: ${misses.join("; ")}.` : ""}${rc.contest ? ` The learner contested "${rc.contest.line}" (${rc.contest.ruling}).` : ""}${rc.borderline.length ? ` ${rc.borderline.join(" ")}` : ""} The lesson behind those lines is the one to look at.`;
   return { learnerNote, teamSummary };
 }

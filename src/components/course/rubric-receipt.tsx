@@ -16,7 +16,7 @@ import type { CohortResponse } from "./cohort-screen";
 const grouped = (fingerprint: string) => fingerprint.match(/.{1,4}/g)!.join(" ");
 
 /** The rubric terms a learner is graded on: on the course page before buying, then on the receipt and certificate. */
-export function RubricTerms({ lock, before = false, className = "" }: { lock?: Pick<RubricLock, "version" | "fingerprint"> & { lockedAt?: string }; before?: boolean; className?: string }) {
+export function RubricTerms({ lock, before = false, checkHref, className = "" }: { lock?: Pick<RubricLock, "version" | "fingerprint"> & { lockedAt?: string }; before?: boolean; checkHref?: string; className?: string }) {
   if (!lock) return null;
   const when = lock.lockedAt ? new Date(lock.lockedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "";
   return (
@@ -31,8 +31,8 @@ export function RubricTerms({ lock, before = false, className = "" }: { lock?: P
             Read the full rubric
           </Link>
         ) : (
-          <Link href={`/rubric?v=${encodeURIComponent(lock.version)}&fp=${encodeURIComponent(lock.fingerprint)}`} className="font-medium text-brand underline" data-testid="check-fingerprint">
-            Check it against the public rubric
+          <Link href={checkHref ?? `/rubric?v=${encodeURIComponent(lock.version)}&fp=${encodeURIComponent(lock.fingerprint)}`} className="font-medium text-brand underline" data-testid="check-fingerprint">
+            {checkHref ? "Check it against the course's rubric" : "Check it against the public rubric"}
           </Link>
         )}
       </span>

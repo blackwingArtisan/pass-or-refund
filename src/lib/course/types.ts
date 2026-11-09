@@ -1,6 +1,6 @@
 /** Records and views shared by server and browser. Types only. */
 import type { Outcome } from "@/lib/grading/decide";
-import type { ModelCap, ScoredItem } from "@/lib/grading/frozen/score-items";
+import type { ModelCap, Rubric, ScoredItem } from "@/lib/grading/frozen/score-items";
 import type { Overdue } from "./overdue";
 
 export type EnrollmentStatus = "unpaid" | "active" | "passed" | "under_review" | "refund_pending" | "refund_review" | "refund_declined" | "refund_blocked" | "refunded";
@@ -39,6 +39,8 @@ export interface Attempt extends GradedAttempt {
   reviewedStudyList: boolean;
   /** The earlier attempt this one nearly copies. It's graded, but it can't count toward a refund. */
   nearCopyOf?: number;
+  /** The questions this attempt was asked. Missing on the sample course, whose four questions they are. */
+  questionIds?: string[];
   /** A person decided a 69-70 attempt. `outcome` holds their decision, and the score stays as graded. */
   settled?: ReviewDecision;
 }
@@ -193,6 +195,8 @@ export interface Enrollment {
   testRun?: boolean;
   /** Missing only on enrollments made before rubrics were locked: those use version 1. */
   rubric?: RubricLock;
+  /** Set when this is a creator's own course (cc_<fingerprint>) rather than the sample course. */
+  courseId?: string;
   contest?: Contest;
 }
 
@@ -224,4 +228,6 @@ export interface EnrollmentView extends Omit<Enrollment, "learnerEmail"> {
   nextAttemptAt: string | null;
   /** Set when the course team has taken longer than the guarantee allows. */
   overdue: Overdue | null;
+  /** A creator's own course: what the learner's screens show instead of the sample course. */
+  creatorCourse?: { id: string; path: string; title: string; rubric: Rubric };
 }
