@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Check, ChevronDown, ShieldCheck } from "lucide-react";
 import { guaranteeLine, invoiceIdFor } from "@/lib/course/guarantee-terms";
+import { GUARANTEE_SUMMARY } from "@/lib/course/policy";
 import type { EnrollmentView } from "@/lib/course/types";
 import { RubricTerms } from "./rubric-receipt";
 
@@ -13,8 +14,9 @@ export function checkHrefFor(enrollment: Pick<EnrollmentView, "id" | "rubric">, 
 
 /**
  * "Your guarantee": the price, the pass mark, the two tries and the refund in one line, then three
- * plain promises with a link each. The fingerprint and invoice id sit behind "Check it yourself",
- * so a learner reads the promise without having to read a hash.
+ * plain promises with a link each. This is the only place the learner page states the guarantee: its
+ * four rules, the fingerprint and the invoice id sit behind "Check it yourself", so a learner reads
+ * the promise once without having to read a hash.
  */
 export function GuaranteeStrip({ enrollment, passMark, checkHref }: { enrollment: EnrollmentView; passMark: number; checkHref?: string }) {
   const payment = enrollment.payment;
@@ -25,7 +27,7 @@ export function GuaranteeStrip({ enrollment, passMark, checkHref }: { enrollment
   const promises = [
     { text: "Rubric locked at purchase", href: check, label: "Check", testId: "check-fingerprint" },
     { text: "On your PayPal order", href: verifyHref, label: "Verify on PayPal", testId: "verify-on-paypal" },
-    { text: "A person approves every refund", href: "/terms", label: "Terms", testId: "strip-terms" },
+    { text: "Every rule in writing", href: "/terms", label: "Terms", testId: "strip-terms" },
   ];
   return (
     <section data-testid="receipt" aria-labelledby="your-guarantee" className="rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm text-zinc-700 sm:px-5">
@@ -58,6 +60,11 @@ export function GuaranteeStrip({ enrollment, passMark, checkHref }: { enrollment
           <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden /> Check it yourself
         </summary>
         <div className="mt-2 space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs text-zinc-600">
+          <ul className="list-disc space-y-0.5 pl-4 text-zinc-700" data-testid="strip-guarantee-rules">
+            {GUARANTEE_SUMMARY.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
           <RubricTerms lock={enrollment.rubric} link={false} />
           <p>
             PayPal&rsquo;s order carries it on the item line and as invoice_id{" "}

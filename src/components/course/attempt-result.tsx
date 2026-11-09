@@ -54,7 +54,8 @@ export function AttemptResult({ attempt }: { attempt: Attempt }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-zinc-900">Attempt {attempt.number}</h3>
-          <p className="text-sm text-zinc-500">{attempt.runs.length > 1 ? "This was close, so it was graded three times. The middle score counts." : `Pass mark ${rubric.passMark} out of 100.`}</p>
+          {/* The pass mark is in the summary line that opens "Your results", so it isn't repeated per attempt. */}
+          {attempt.runs.length > 1 ? <p className="text-sm text-zinc-500">This was close, so it was graded three times. The middle score counts.</p> : null}
           <p data-testid={`grader-${attempt.number}`} className="text-xs text-zinc-500">
             {run.mocked ? "Graded against the public rubric. Code added up the points." : `Graded by ${run.model ?? "Claude"} against the public rubric. Code added up the points.`}
           </p>

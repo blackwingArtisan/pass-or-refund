@@ -22,6 +22,7 @@ export function ApprovalPrompt({
   amount,
   reasons,
   askDeclineNote,
+  actionsFirst,
   onDecided,
   className,
 }: {
@@ -33,6 +34,8 @@ export function ApprovalPrompt({
   reasons?: string[];
   /** Decline needs a reason, and it is saved with the decision. */
   askDeclineNote?: boolean;
+  /** Approve and Decline sit right under the amount, with the reasons below them, so the buttons are on screen first. */
+  actionsFirst?: boolean;
   onDecided?: (decision: "approved" | "denied") => void;
   className?: string;
 }) {
@@ -54,6 +57,17 @@ export function ApprovalPrompt({
     }
   }
 
+  const reasonsBox = reasons?.length ? (
+    <div data-testid="approval-reasons" className="mt-3 rounded-lg bg-white/70 px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">The agent&rsquo;s reasons</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-zinc-700">
+        {reasons.map((text) => (
+          <li key={text}>{text}</li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
+
   return (
     <div data-testid="approval-prompt" className={cn("animate-pulse-ring rounded-xl border border-amber-300 bg-gradient-to-b from-amber-50 to-white p-4", className)}>
       <div className="flex items-start gap-3">
@@ -67,16 +81,7 @@ export function ApprovalPrompt({
         </div>
         {amount ? <MoneyBadge amount={amount} direction="neutral" size="lg" /> : null}
       </div>
-      {reasons?.length ? (
-        <div data-testid="approval-reasons" className="mt-3 rounded-lg bg-white/70 px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">The agent&rsquo;s reasons</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-zinc-700">
-            {reasons.map((text) => (
-              <li key={text}>{text}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {actionsFirst ? null : reasonsBox}
       {declining ? (
         <div className="mt-3">
           <label htmlFor={`decline-${approvalId}`} className="text-sm font-medium text-zinc-800">
@@ -101,6 +106,7 @@ export function ApprovalPrompt({
           Approve
         </Button>
       </div>
+      {actionsFirst ? reasonsBox : null}
     </div>
   );
 }

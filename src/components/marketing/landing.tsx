@@ -132,29 +132,36 @@ function GraderAccuracy() {
   );
 }
 
-/** Judges play both sides: the learner on /course and the course team behind this passcode. */
-function ForJudges() {
+/**
+ * Judges play both sides: the learner on /course and the course team behind this passcode. It sits
+ * below the fold, above the footer, so the hero says one thing; the hero keeps a small link here.
+ */
+export function ForJudges() {
   return (
-    <div id="judges" data-testid="for-judges" className="mt-6 max-w-xl rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm text-zinc-700">
-      <p className="flex items-center gap-2 font-semibold text-zinc-900">
-        <KeyRound className="size-4 text-brand" /> For judges
-      </p>
-      <p className="mt-1">
-        Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team. To skip the typing, open <span className="font-medium text-zinc-900">For judges</span> at the bottom of the menu, turn on Judge shortcuts and pick a prepared answer.
-      </p>
-      {/* One click to /team, signed in: the form carries the printed passcode. */}
-      <form method="post" action="/api/team/judge" className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <input type="hidden" name="passcode" value={teamPasscode()} />
-        <button type="submit" data-testid="open-team-view" className={buttonClass("secondary", "sm")}>
-          <Users className="size-4" /> Open the course team view
-        </button>
-        <span className="text-xs text-zinc-500">
-          Or type the passcode{" "}
-          <code data-testid="team-passcode-shown" className="rounded bg-white px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code> on{" "}
-          <a href="/team" className="underline">/team</a>.
-        </span>
-      </form>
-    </div>
+    <HideWhenClean>
+      <section id="judges" className="scroll-mt-16 border-t border-zinc-200/70 bg-white py-10">
+        <div data-testid="for-judges" className="mx-auto max-w-6xl px-4 text-sm text-zinc-700 sm:px-6">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-900">
+            <KeyRound className="size-4 text-brand" /> For judges
+          </h2>
+          <p className="mt-1 max-w-2xl">
+            Buy as a learner on <a href="/course" className="font-medium text-brand underline">the course page</a>, then approve the refund as the course team. To skip the typing, open <span className="font-medium text-zinc-900">For judges</span> at the bottom of the menu, turn on Judge shortcuts and pick a prepared answer.
+          </p>
+          {/* One click to /team, signed in: the form carries the printed passcode. */}
+          <form method="post" action="/api/team/judge" className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <input type="hidden" name="passcode" value={teamPasscode()} />
+            <button type="submit" data-testid="open-team-view" className={buttonClass("secondary", "sm")}>
+              <Users className="size-4" /> Open the course team view
+            </button>
+            <span className="text-xs text-zinc-500">
+              Or type the passcode{" "}
+              <code data-testid="team-passcode-shown" className="rounded bg-zinc-50 px-1.5 py-0.5 font-mono font-semibold text-zinc-900 ring-1 ring-brand-200">{teamPasscode()}</code> on{" "}
+              <a href="/team" className="underline">/team</a>.
+            </span>
+          </form>
+        </div>
+      </section>
+    </HideWhenClean>
   );
 }
 
@@ -265,7 +272,11 @@ export function Hero() {
             </a>
           </p>
           <HideWhenClean>
-            <ForJudges />
+            <p className="mt-2 text-sm">
+              <a href="#judges" data-testid="hero-judges-link" className="text-zinc-500 underline underline-offset-2 hover:text-zinc-900">
+                Judging? Start here
+              </a>
+            </p>
           </HideWhenClean>
         </div>
         <HeroRefundCard />

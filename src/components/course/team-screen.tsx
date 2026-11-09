@@ -217,6 +217,20 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
             </Link>
           </span>
         </div>
+        {/* The decision comes first: Approve and Decline sit right under the learner's name, the agent's summary and reasons below them. */}
+        {enrollment.approval ? (
+          <ApprovalPrompt
+            approvalId={enrollment.approval.id}
+            summary={enrollment.approval.summary}
+            reason={enrollment.approval.reason}
+            amount={enrollment.approval.amountValue ? { currency_code: CURRENCY, value: enrollment.approval.amountValue } : undefined}
+            reasons={enrollment.refund?.proposal?.reasons}
+            askDeclineNote
+            actionsFirst
+            onDecided={onChange}
+          />
+        ) : null}
+        {enrollment.approval && enrollment.refund?.proposal?.teamSummary ? <AgentSummary text={enrollment.refund.proposal.teamSummary} /> : null}
         {enrollment.guaranteeVoid ? <p className="text-sm text-red-700">An attempt was flagged for instructing the grader. The guarantee is void.</p> : null}
         <ContestRuling enrollment={enrollment} onRuled={onChange} />
         {enrollment.status === "under_review" && latest ? <SettleReview enrollmentId={enrollment.id} attempt={latest} onSettled={onChange} /> : null}
@@ -227,18 +241,6 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
         ) : null}
         {enrollment.status === "refund_pending" && !enrollment.approval ? <p className="text-sm text-zinc-600">The refund agent is checking the policy.</p> : null}
         {enrollment.status === "refund_review" && enrollment.refund?.review ? <RefundReviewBox enrollment={enrollment} onDecided={onChange} /> : null}
-        {enrollment.approval && enrollment.refund?.proposal?.teamSummary ? <AgentSummary text={enrollment.refund.proposal.teamSummary} /> : null}
-        {enrollment.approval ? (
-          <ApprovalPrompt
-            approvalId={enrollment.approval.id}
-            summary={enrollment.approval.summary}
-            reason={enrollment.approval.reason}
-            amount={enrollment.approval.amountValue ? { currency_code: CURRENCY, value: enrollment.approval.amountValue } : undefined}
-            reasons={enrollment.refund?.proposal?.reasons}
-            askDeclineNote
-            onDecided={onChange}
-          />
-        ) : null}
         {enrollment.status === "refund_blocked" || enrollment.status === "refund_declined" ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2">
             <p className="text-sm text-red-900" data-testid="refund-stopped">
