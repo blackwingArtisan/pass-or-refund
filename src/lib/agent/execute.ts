@@ -74,7 +74,8 @@ export async function runTool(tool: AgentTool, rawInput: unknown, ctx: { runId: 
     title = tool.title?.(input as never) ?? title;
   } catch (error) {
     const step = startStep({ kind: "tool", title, subtitle: `${SOURCE_LABEL[tool.source]} · ${tool.name}`, tool: { name: tool.name, source: tool.source, input: rawInput } });
-    step.fail(error, { detail: "Invalid tool input" });
+    // The timeline shows a plain line with the raw error under Details (tool-call-timeline.tsx); the model gets it all.
+    step.fail(error);
     return { content: JSON.stringify({ error: "INVALID_INPUT", message: error instanceof Error ? error.message : String(error) }), isError: true };
   }
 

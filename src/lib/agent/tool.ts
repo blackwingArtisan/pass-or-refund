@@ -64,6 +64,8 @@ export function defineTool<S extends z.ZodType, O>(def: {
   impact?: AgentTool<z.infer<S>, O>["impact"];
   execute: AgentTool<z.infer<S>, O>["execute"];
   title?: AgentTool<z.infer<S>, O>["title"];
+  /** Runs on the raw model input before the schema checks it, e.g. fitProse() to shorten an over-long summary. */
+  fit?: (raw: unknown) => unknown;
 }): AgentTool<z.infer<S>, O> {
   if (def.risk === "money" && !def.impact) throw new Error(`Tool ${def.name} moves money and must define impact()`);
   const json = z.toJSONSchema(def.schema, { target: "draft-2020-12", io: "input" }) as Record<string, unknown>;
@@ -75,7 +77,7 @@ export function defineTool<S extends z.ZodType, O>(def: {
     source: def.source ?? "app",
     risk: def.risk,
     inputSchema: json,
-    parse: (input) => def.schema.parse(input ?? {}),
+    parse: (input) => def.schema.parse(def.fit ? def.fit(input ?? {}) : (input ?? {})),
     impact: def.impact,
     execute: def.execute,
     title: def.title,

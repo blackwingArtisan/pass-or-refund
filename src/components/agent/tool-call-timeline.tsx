@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { collapseRuns, isQuietStep as isQuiet, quietKey, repeatLabel } from "@/lib/events/collapse";
+import { plainStepError } from "@/lib/events/plain-error";
 import type { TimelineStatus, TimelineStep } from "@/lib/events/types";
 import { MoneyBadge } from "../money-badge";
 import { cn } from "../ui/cn";
@@ -92,17 +93,36 @@ function Meta({ step }: { step: TimelineStep }) {
 function Details({ step }: { step: TimelineStep }) {
   const [open, setOpen] = useState(false);
   const payload = step.tool ? { input: step.tool.input, output: step.tool.output } : (step.data as { request?: unknown; response?: unknown } | undefined);
-  if (!payload || (payload as { request?: unknown; input?: unknown }).request === undefined && (payload as { input?: unknown }).input === undefined && (payload as { response?: unknown }).response === undefined) return null;
+  const hasPayload = !!payload && !((payload as { request?: unknown }).request === undefined && (payload as { input?: unknown }).input === undefined && (payload as { response?: unknown }).response === undefined);
+  // A failed step's raw error (a ZodError's JSON, say) lives here, folded, under its one plain line.
+  const rawError = step.error && step.status !== "denied" ? `${step.error.issue ?? step.error.name}: ${step.error.message}` : undefined;
+  if (!hasPayload && !rawError) return null;
   return (
     <div className="mt-2">
-      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-800">
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-800" data-testid="step-details">
         <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
         {open ? "Hide details" : "Details"}
       </button>
-      {open ? (
+      {open && rawError ? (
+        <pre data-testid="step-raw-error" className="scrollbar-thin mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950 p-3 text-[11px] leading-relaxed text-red-200">{rawError}</pre>
+      ) : null}
+      {open && hasPayload ? (
         <pre className="scrollbar-thin mt-2 max-h-64 overflow-auto rounded-lg bg-zinc-950 p-3 text-[11px] leading-relaxed text-zinc-100">{JSON.stringify(payload, null, 2)}</pre>
       ) : null}
     </div>
+  );
+}
+
+/** A failed step: one plain line. The raw error is folded under the step's Details, never shown as JSON by default. */
+function StepError({ error }: { error: NonNullable<TimelineStep["error"]> }) {
+  return (
+    <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="step-error">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+      <span className="break-words" data-testid="step-error-line">
+        {plainStepError(error)}
+        {error.debugId ? <span className="ml-1 font-mono text-xs">(debug_id {error.debugId})</span> : null}
+      </span>
+    </p>
   );
 }
 
@@ -135,7 +155,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
   const awaiting = step.status === "awaiting_approval" && step.approval?.state === "pending";
 
   return (
-    <li className="relative flex animate-slide-up gap-3 pb-4" data-testid="timeline-step" data-kind={step.kind} data-status={step.status}>
+    <li className="relative flex animate-slide-up gap-3 pb-4" data-testid="timeline-step" data-kind={step.kind} data-status={step.status} data-run={step.runId}>
       <span className={cn("z-10 flex size-9 shrink-0 items-center justify-center rounded-full ring-1", RAIL[step.status])}>
         <Icon className="size-4" />
       </span>
@@ -172,15 +192,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
           </div>
         </div>
         {step.detail ? <p className={cn("mt-1.5 whitespace-pre-wrap break-words text-sm", isMessage ? "text-zinc-800" : "text-zinc-600")}>{step.detail}</p> : null}
-        {step.error && step.status !== "denied" ? (
-          <div className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <span className="break-words">
-              <span className="font-semibold">{step.error.issue ?? step.error.name}</span>: {step.error.message}
-              {step.error.debugId ? <span className="ml-1 font-mono text-xs">(debug_id {step.error.debugId})</span> : null}
-            </span>
-          </div>
-        ) : null}
+        {step.error && step.status !== "denied" ? <StepError error={step.error} /> : null}
         {awaiting && step.approval ? <ApprovalPrompt className="mt-3" approvalId={step.approval.id} summary={step.title} reason={step.approval.reason} amount={step.amount} onDecided={onApprovalDecided} /> : null}
         {!isMessage ? <Details step={step} /> : null}
       </div>

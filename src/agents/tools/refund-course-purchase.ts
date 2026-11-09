@@ -18,6 +18,7 @@ import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
 import { runWithCallMeta, type CallMeta } from "@/lib/paypal/meta";
+import { fitNotes, NOTE_LIMITS as L } from "./note-limits";
 
 export const REFUND_COURSE_PURCHASE = "refund_course_purchase";
 
@@ -62,10 +63,11 @@ export const refundCoursePurchase = (enrollmentId: string) =>
     risk: "money",
     schema: z.object({
       amount: z.string().min(1).describe('Decimal string, such as "49.00"'),
-      reasons: z.array(z.string().min(1).max(240)).min(1).max(5).describe("Why this refund is due, from the policy check. Plain sentences for the person deciding."),
-      team_summary: z.string().min(1).max(600).optional().describe("Two or three sentences for the person deciding: the scores, the rubric lines the learner fell short on, any contest and how it was ruled."),
-      learner_note: z.string().min(1).max(500).optional().describe("Two or three kind sentences the learner reads: sorry, which rubric lines held them back (never their answers), and that the refund comes once a person approves."),
+      reasons: z.array(z.string().min(1).max(L.reasons.each)).min(1).max(L.reasons.items).describe(`Why this refund is due, from the policy check. Plain sentences for the person deciding. At most ${L.reasons.items} reasons of ${L.reasons.each} characters each.`),
+      team_summary: z.string().min(1).max(L.team_summary).optional().describe(`Two or three sentences for the person deciding: the scores, the rubric lines the learner fell short on, any contest and how it was ruled. At most ${L.team_summary} characters.`),
+      learner_note: z.string().min(1).max(L.learner_note).optional().describe(`Two or three kind sentences the learner reads: sorry, which rubric lines held them back (never their answers), and that the refund comes once a person approves. At most ${L.learner_note} characters.`),
     }),
+    fit: fitNotes,
     title: () => `Propose a refund for ${courseTitleOf(requireEnrollment(enrollmentId))}`,
     impact: async (i, ctx) => {
       // Once the agent has sent the case to a person, it waits for them; nothing is recorded, so their review stays clean.

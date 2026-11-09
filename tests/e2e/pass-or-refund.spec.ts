@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { COURSE_PRICE_CENTS } from "../../src/lib/course/content";
 import { GUARANTEE_TERMS } from "../../src/lib/course/policy";
+import { INPUT_DIDNT_FIT } from "../../src/lib/events/plain-error";
 import { samples } from "../../src/lib/course/samples";
 import { fromMinor } from "../../src/lib/money";
 import type { Cohort } from "../../src/lib/course/cohort";
@@ -125,6 +126,18 @@ async function failTwice(page: Page) {
   await studyThenRetry(page);
   await attempt(page, "fail2", 2);
   await expect(page.getByTestId("refund-waiting")).toBeVisible();
+}
+
+/** What a raw tool error looks like: a ZodError's JSON or its issue codes. A timeline never shows it unless Details is opened. */
+const RAW_ERROR = /ZodError|too_big|too_small|"(code|path|origin|maximum)"\s*:|INVALID_INPUT/;
+
+/** No tool step of this run failed, and no raw error shows anywhere on the timeline. Holds with live AI too. */
+async function noFailedToolStep(page: Page, runId: string) {
+  // Every timeline on the page: the team's, and the one in the What PayPal did drawer.
+  const timelines = page.getByTestId("tool-call-timeline");
+  await expect(timelines.locator(`[data-testid="timeline-step"][data-run="${runId}"]`).first()).toBeAttached({ timeout: 30_000 });
+  await expect(timelines.locator(`[data-testid="timeline-step"][data-kind="tool"][data-status="failed"][data-run="${runId}"]`)).toHaveCount(0);
+  expect((await timelines.allTextContents()).join("\n")).not.toMatch(RAW_ERROR);
 }
 
 async function approveOnTeam(page: Page, id: string) {
@@ -1163,6 +1176,7 @@ test.describe("mock-safe flows", () => {
     if (sandbox) expect((await readPayPalObjects(payment!.orderId, payment!.captureId!)).capture.status).toBe("COMPLETED");
 
     const team = await approveOnTeam(page, id);
+    await noFailedToolStep(page, (await enrollmentOf(request, id)).refund!.runId);
     await expect(team.getByTestId("team-refund-done")).toContainText(`Refund issued: $${PRICE} back to Alex Rivera.`, { timeout: 60_000 });
     await expect(team.getByTestId("team-refund-done")).toContainText("PayPal reports it COMPLETED");
     await expect(team.getByTestId("team-paypal-note")).toContainText("What PayPal told the learner: Guarantee refund, rubric v1", { timeout: 30_000 });
@@ -2192,6 +2206,53 @@ test.describe("mock-safe flows", () => {
     });
   });
 
+  test.describe("when the agent writes past its limits", () => {
+    const skew = (request: APIRequestContext, mode: "long-notes" | "bad-input" | null) => request.post("/api/dev/mock/agent-input", { data: { mode } });
+
+    test.beforeEach(async ({ request }) => {
+      test.skip((await mode(request)) !== "mock", "Mock mode is the only place to script the agent's input. Live runs are checked by noFailedToolStep in the flows above.");
+    });
+    test.afterEach(async ({ request }) => {
+      if ((await mode(request)) === "mock") await skew(request, null);
+    });
+
+    test("an over-long summary is shortened, not failed: the person gets the agent's own proposal", async ({ page, request }) => {
+      const id = await buy(page, request, "Len Long");
+      await skew(request, "long-notes");
+      await failTwice(page);
+      await page.getByTestId("refund-waiting").getByRole("link").click();
+      const team = page.getByTestId(`enrollment-${id}`);
+      await expect(team.getByTestId("approval-reasons")).toBeVisible({ timeout: 90_000 });
+      const held = await enrollmentOf(request, id);
+      expect(held.refund?.proposedWithoutAi).toBeUndefined();
+      expect(held.refund!.proposal!.teamSummary!.length).toBeGreaterThan(360);
+      expect(held.refund!.proposal!.teamSummary!.length).toBeLessThanOrEqual(600);
+      await expect(team.getByTestId("agent-summary")).toContainText(held.refund!.proposal!.teamSummary!);
+      await noFailedToolStep(page, held.refund!.runId);
+    });
+
+    test("input nothing can fix fails one step in plain words, the raw error waits under Details, and the refund still reaches a person", async ({ page, request }) => {
+      const id = await buy(page, request, "Ida Input");
+      await skew(request, "bad-input");
+      await failTwice(page);
+      await page.getByTestId("refund-waiting").getByRole("link").click();
+      const team = page.getByTestId(`enrollment-${id}`);
+      await expect(team.getByTestId("proposed-without-ai")).toContainText("stopped without proposing", { timeout: 60_000 });
+      const timelines = page.getByTestId("tool-call-timeline");
+      const failed = timelines.filter({ visible: true }).first().locator('[data-testid="timeline-step"][data-kind="tool"][data-status="failed"]').last();
+      await expect(failed.getByTestId("step-error-line")).toHaveText(INPUT_DIDNT_FIT);
+      expect((await timelines.allTextContents()).join("\n")).not.toMatch(RAW_ERROR);
+      await failed.scrollIntoViewIfNeeded();
+      await failed.screenshot({ path: "screenshots/timeline-step-error.png" });
+      await expect(failed.getByTestId("step-details")).toHaveCount(1);
+      await failed.getByTestId("step-details").click();
+      await expect(failed.getByTestId("step-raw-error")).toContainText("too_small");
+      await failed.getByTestId("step-details").click();
+      await team.getByTestId("approve-button").click();
+      await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 60_000 });
+    });
+  });
+
   test("every page fits a phone with no sideways scroll", async ({ page, request }) => {
     const id = await buy(page, request, "Phoebe Phone");
     await attempt(page, "fail1", 1);
@@ -2246,6 +2307,9 @@ test.describe("paid run", () => {
 
     await team.getByTestId("approve-button").click();
     await expect(team.getByText("Refunded", { exact: true })).toBeVisible({ timeout: 90_000 });
+    // The live agent's own proposal, with no failed step: an over-long note is shortened, never failed.
+    expect(held.refund?.proposedWithoutAi).toBeUndefined();
+    await noFailedToolStep(page, held.refund!.runId);
     const { attempts, refund, payment } = await enrollmentOf(request, id);
     await page.goto(`/learn/${id}`);
     await expect(page.getByTestId("grader-1")).toContainText("Graded by Claude Sonnet 5.5");

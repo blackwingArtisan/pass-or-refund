@@ -8,6 +8,7 @@ import { defineTool } from "@/lib/agent/tool";
 import { requireEnrollment, saveEnrollment } from "@/lib/course/enrollments";
 import { refundCaseFor } from "@/lib/course/refund-case";
 import { HttpError } from "@/lib/http";
+import { fitNotes, NOTE_LIMITS as L } from "./note-limits";
 
 export const ROUTE_TO_REVIEW = "route_refund_to_review";
 
@@ -17,10 +18,11 @@ export const routeRefundToReview = (enrollmentId: string) =>
     description: "Instead of proposing the refund, ask a person on the course team to look at this case first. Only allowed when can_route_to_review is true in the policy result: a contested rubric line or a borderline grade. No money moves.",
     risk: "write",
     schema: z.object({
-      reason: z.string().min(1).max(300).describe("Why a person should look before a refund is proposed. Name the contested line or the borderline grade."),
-      team_summary: z.string().min(1).max(600).describe("Two or three sentences for the course team: scores, the lines the learner fell short on, the contest and its ruling."),
-      learner_note: z.string().min(1).max(500).describe("Two kind sentences the learner reads: a person on the course team is looking at their case before the refund, and why."),
+      reason: z.string().min(1).max(L.reason).describe(`Why a person should look before a refund is proposed. Name the contested line or the borderline grade. At most ${L.reason} characters.`),
+      team_summary: z.string().min(1).max(L.team_summary).describe(`Two or three sentences for the course team: scores, the lines the learner fell short on, the contest and its ruling. At most ${L.team_summary} characters.`),
+      learner_note: z.string().min(1).max(L.learner_note).describe(`Two kind sentences the learner reads: a person on the course team is looking at their case before the refund, and why. At most ${L.learner_note} characters.`),
     }),
+    fit: fitNotes,
     title: () => "Ask the course team to review before refunding",
     execute: async (i) => {
       const enrollment = requireEnrollment(enrollmentId);

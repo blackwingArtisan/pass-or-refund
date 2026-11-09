@@ -95,6 +95,14 @@ async function noApprovalDenied(on: Page, where: string) {
   expect(hit, `on screen at ${where}, contradicting the approval: …${around}…`).toBeNull();
 }
 
+/** A Failed tool step on screen (the hosted take's ZodError) makes a bad take: fail it, so it's re-recorded. */
+async function noFailedToolStep(on: Page, where: string) {
+  const failed = on.locator('[data-testid="timeline-step"][data-kind="tool"][data-status="failed"]');
+  const count = await failed.count();
+  const what = count ? `${await failed.first().getByTestId("step-title").innerText()}: ${await failed.first().getByTestId("step-error-line").innerText().catch(() => "")}` : "";
+  expect(count, `a Failed tool step on screen at ${where}: ${what}`).toBe(0);
+}
+
 /** Ticks the study list, so the next attempt counts. */
 async function study(page: Page) {
   // The hosted site renders and saves ticks more slowly than a local build, so wait for each step.
@@ -206,6 +214,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     console.log(`[demo]   edited cut at ${cuts.editedSeconds}s`);
     await requireLive(page, label);
     await noApprovalDenied(page, label);
+    await noFailedToolStep(page, label);
   };
   let popup: Page | undefined;
   /** The captions, at their times in the edited cut. */
