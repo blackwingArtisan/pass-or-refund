@@ -74,8 +74,16 @@ async function submitPrepared(page: Page, sample: string, number: number) {
 
 /** Ticks the study list, so the next attempt counts. */
 async function study(page: Page) {
-  for (const item of await page.locator('[data-testid^="study-item-"]').all()) await item.click();
-  if (await page.getByTestId("mark-reviewed").isVisible()) await page.getByTestId("mark-reviewed").click();
+  // The hosted site renders and saves ticks more slowly than a local build, so wait for each step.
+  const reviewed = page.getByTestId("mark-reviewed");
+  await reviewed.or(page.getByTestId("study-list-reviewed")).first().waitFor({ timeout: 60_000 });
+  if (!(await reviewed.isVisible())) return;
+  for (const item of await page.locator('[data-testid^="study-item-"]').all()) {
+    if (!(await item.isChecked())) await item.click();
+    await expect(item).toBeChecked({ timeout: 30_000 });
+  }
+  await reviewed.click();
+  await page.getByTestId("study-list-reviewed").waitFor({ timeout: 30_000 });
 }
 
 /**
