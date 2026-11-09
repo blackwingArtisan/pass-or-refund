@@ -1,6 +1,9 @@
 import { ArrowRight, Check, ChevronRight, KeyRound, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { appConfig } from "@/app.config";
+import { ExampleCourseLink } from "@/components/course/example-course-link";
 import { creatorCase } from "@/lib/course/creator-case";
+import { creatorCoursePath } from "@/lib/course/creator-store";
+import { exampleCreatorCourseId } from "@/lib/course/example-creator-course";
 import { GRADER_FRESH_SET, graderAccuracyLines } from "@/lib/course/grader-accuracy";
 import { formatCents } from "@/lib/course/policy";
 import { teamPasscode } from "@/lib/course/team-access";
@@ -95,9 +98,14 @@ export function ForCreators() {
               <a href="/creator" className="font-medium text-brand underline">Put your own rubric on the guarantee</a>
             </p>
           </div>
-          <div data-testid="landing-cohort" className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-black/5">
-            <p className="mb-3 text-sm font-semibold text-zinc-900">How learners did, before you buy</p>
-            <CohortStats />
+          <div className="space-y-3">
+            <div data-testid="landing-cohort" className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-black/5">
+              <p className="mb-3 text-sm font-semibold text-zinc-900">How learners did, before you buy</p>
+              <CohortStats />
+            </div>
+            <p className="px-1 text-xs text-zinc-500">
+              <ExampleCourseLink href={creatorCoursePath(exampleCreatorCourseId())} testId="landing-example-course" where="landing" />
+            </p>
           </div>
         </div>
       </div>
