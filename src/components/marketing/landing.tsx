@@ -204,6 +204,11 @@ export function Hero() {
           <p className="mt-5 flex items-center gap-2 text-sm text-zinc-500">
             <ShieldCheck className="size-4 text-emerald-600" /> One sample course, PayPal sandbox only. No real money moves.
           </p>
+          <p className="mt-2 text-sm">
+            <a href="/creator" data-testid="landing-creator-link" className="font-medium text-brand underline underline-offset-2">
+              Selling a course? Put your own rubric on the guarantee
+            </a>
+          </p>
           <HideWhenClean>
             <ForJudges />
           </HideWhenClean>

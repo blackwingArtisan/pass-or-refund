@@ -11,7 +11,7 @@ import { rubric } from "@/lib/course/content";
 import { sampleIdOf } from "@/lib/course/samples";
 import verdicts from "./mock-verdicts.json";
 import type { ChecklistGrade } from "./frozen/schemas";
-import type { Answers } from "./frozen/score-items";
+import type { Answers, Rubric } from "./frozen/score-items";
 
 const RECORDED = verdicts as Record<string, ChecklistGrade[]>;
 
@@ -21,19 +21,20 @@ const phrasesOf = (answer: string) => {
   return parts.length ? parts.map((p) => p.slice(0, 60)) : [answer.slice(0, 60)];
 };
 
-function typedByHand(answers: Answers): ChecklistGrade {
-  const items = rubric.questions.flatMap((q) => {
+function typedByHand(answers: Answers, forRubric: Rubric): ChecklistGrade {
+  const items = forRubric.questions.flatMap((q) => {
     const answer = (answers[q.id] ?? "").trim();
     const phrases = phrasesOf(answer);
     return q.items.map((item, i) => ({ id: item.id, verdict: answer ? ("partial" as const) : ("not_met" as const), quote: answer ? phrases[i % phrases.length] : "" }));
   });
-  const caps = rubric.questions.flatMap((q) => q.caps.map((cap) => ({ id: cap.id, triggered: false, quote: "" })));
+  const caps = forRubric.questions.flatMap((q) => q.caps.map((cap) => ({ id: cap.id, triggered: false, quote: "" })));
   return { items, caps, injection_attempted: false, injection_quote: "" };
 }
 
-export function mockGrade(answers: Answers, run: number): ChecklistGrade {
+/** Recorded verdicts only fit the sample course; any other rubric (a creator's own) is graded as typed by hand. */
+export function mockGrade(answers: Answers, run: number, forRubric: Rubric = rubric): ChecklistGrade {
   assertNoMockOutage();
-  const sample = sampleIdOf(answers);
+  const sample = forRubric.course === rubric.course ? sampleIdOf(answers) : undefined;
   const recorded = sample ? RECORDED[sample] : undefined;
-  return recorded?.[run % recorded.length] ?? typedByHand(answers);
+  return recorded?.[run % recorded.length] ?? typedByHand(answers, forRubric);
 }

@@ -13,7 +13,7 @@ const OUT_OF_CREDIT = "We've run out of AI grading credit for now, so this attem
 const GRADER_DOWN = "The AI grader isn't answering right now, so this attempt wasn't graded. Your answers are still here and nothing was counted against you. Please try again in a few minutes.";
 
 /** Why grading stopped, in words a learner can act on. Nothing was recorded, so a retry is safe. */
-function gradingProblem(error: unknown): unknown {
+export function gradingProblem(error: unknown): unknown {
   if (error instanceof RateLimitedError || error instanceof HttpError) return error;
   if (isOutOfAiCredit(error)) return new HttpError(402, OUT_OF_CREDIT, "ai_credit");
   console.error("[grading]", error instanceof Error ? error.message : error);

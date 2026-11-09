@@ -21,6 +21,7 @@ export const appConfig = {
     { label: "Course team", href: "/team" },
     { label: "Cohort results", href: "/cohort" },
     { label: "Activity", href: "/activity" },
+    { label: "Your own course", href: "/creator" },
   ],
 
   landing: {
