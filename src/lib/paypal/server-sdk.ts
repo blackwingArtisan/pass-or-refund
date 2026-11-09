@@ -6,7 +6,7 @@
  * Mock mode never loads this path: getPayPal() returns the kit's mock client there.
  */
 import { ApiError, CheckoutPaymentIntent, Client, Environment, OrdersController, PaymentsController } from "@paypal/paypal-server-sdk";
-import type { ApiResponse, OrderRequest, PurchaseUnitRequest, RefundRequest } from "@paypal/paypal-server-sdk";
+import type { ApiResponse, Item, ItemCategory, OrderRequest, PurchaseUnitRequest, RefundRequest } from "@paypal/paypal-server-sdk";
 import type { PayPalApi } from "./api";
 import { PayPalApiError, PayPalNetworkError } from "./errors";
 import { recordCallMeta } from "./meta";
@@ -30,14 +30,35 @@ export function createServerSdkClient({ clientId, clientSecret }: Pick<SandboxCo
   });
 }
 
+const toSdkMoney = (m: T.Money) => ({ currencyCode: m.currency_code, value: m.value });
+
+/** The order's item lines, which PayPal's checkout window lists, and the item total PayPal requires with them. */
+function toSdkItems(unit: T.PurchaseUnitRequest): Pick<PurchaseUnitRequest, "items"> {
+  if (!unit.items?.length) return {};
+  return {
+    items: unit.items.map((item): Item => ({
+      name: item.name,
+      unitAmount: toSdkMoney(item.unit_amount),
+      quantity: item.quantity,
+      description: item.description,
+      sku: item.sku,
+      category: item.category as ItemCategory | undefined,
+    })),
+  };
+}
+
 function toSdkOrder(body: T.CreateOrderRequest): OrderRequest {
-  const purchaseUnits: PurchaseUnitRequest[] = body.purchase_units.map((unit) => ({
-    referenceId: unit.reference_id,
-    amount: { currencyCode: unit.amount.currency_code, value: unit.amount.value },
-    description: unit.description,
-    customId: unit.custom_id,
-    invoiceId: unit.invoice_id,
-  }));
+  const purchaseUnits: PurchaseUnitRequest[] = body.purchase_units.map((unit) => {
+    const itemTotal = unit.amount.breakdown?.item_total;
+    return {
+      referenceId: unit.reference_id,
+      amount: { ...toSdkMoney(unit.amount), ...(itemTotal ? { breakdown: { itemTotal: toSdkMoney(itemTotal) } } : {}) },
+      description: unit.description,
+      customId: unit.custom_id,
+      invoiceId: unit.invoice_id,
+      ...toSdkItems(unit),
+    };
+  });
   return { intent: body.intent === "AUTHORIZE" ? CheckoutPaymentIntent.Authorize : CheckoutPaymentIntent.Capture, purchaseUnits };
 }
 

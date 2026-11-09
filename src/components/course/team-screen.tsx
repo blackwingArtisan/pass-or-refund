@@ -265,6 +265,12 @@ function EnrollmentCard({ enrollment, onChange }: { enrollment: EnrollmentView; 
             </Link>
           </p>
         ) : null}
+        {enrollment.refund?.paypalNote ? (
+          <p data-testid="team-paypal-note" className="rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+            <strong>What PayPal told the learner:</strong> {enrollment.refund.paypalNote}
+            {enrollment.refund.paypalInvoiceId ? <span className="block font-mono text-xs text-zinc-500">invoice_id {enrollment.refund.paypalInvoiceId}</span> : null}
+          </p>
+        ) : null}
         <WebhookLines enrollment={enrollment} />
       </CardBody>
     </Card>

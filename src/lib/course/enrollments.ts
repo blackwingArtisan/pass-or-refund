@@ -67,7 +67,7 @@ export async function readBackRefund(id: string, paypal: PayPalApi): Promise<Enr
   const enrollment = requireEnrollment(id);
   return saveEnrollment({
     ...enrollment,
-    refund: { ...enrollment.refund!, refundStatus: paid.status, refundStatusReason: paid.status_details?.reason, refundedCents: toMinor(paid.amount.value, paid.amount.currency_code), captureStatus: capture.status, rereadAt: new Date().toISOString() },
+    refund: { ...enrollment.refund!, refundStatus: paid.status, refundStatusReason: paid.status_details?.reason, refundedCents: toMinor(paid.amount.value, paid.amount.currency_code), paypalNote: paid.note_to_payer, paypalInvoiceId: paid.invoice_id, captureStatus: capture.status, rereadAt: new Date().toISOString() },
   });
 }
 

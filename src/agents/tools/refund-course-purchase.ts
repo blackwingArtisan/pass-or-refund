@@ -11,6 +11,7 @@ import { defineTool } from "@/lib/agent/tool";
 import { courseTitleOf } from "@/lib/course/creator-store";
 import { guaranteeFor, readBackRefund, requireEnrollment, saveEnrollment } from "@/lib/course/enrollments";
 import { formatCents, refundAmountProblem } from "@/lib/course/policy";
+import { invoiceIdFor, refundNoteFor } from "@/lib/course/order-terms";
 import { codeNotes } from "@/lib/course/refund-case";
 import type { Refund } from "@/lib/course/types";
 import { HttpError } from "@/lib/http";
@@ -85,7 +86,9 @@ export const refundCoursePurchase = (enrollmentId: string) =>
     execute: async (i, ctx) => {
       const { amount, captureId } = await checked(enrollmentId, i.amount, ctx.paypal);
       const call: CallMeta = {};
-      const refund = await runWithCallMeta(call, () => ctx.paypal.payments.refundCapture(captureId, { amount, note_to_payer: `Refund for ${courseTitleOf(requireEnrollment(enrollmentId))}. Sorry we let you down.` }, { requestId: ctx.requestId }));
+      // The note PayPal sends the learner is built in code from the graded record, never by the agent.
+      const enrollment = requireEnrollment(enrollmentId);
+      const refund = await runWithCallMeta(call, () => ctx.paypal.payments.refundCapture(captureId, { amount, invoice_id: invoiceIdFor(enrollment), note_to_payer: refundNoteFor(enrollment) }, { requestId: ctx.requestId }));
       // Saved before the read-back: if that read fails, the record must still say the money moved.
       updateRefund(enrollmentId, { refundId: refund.id, debugId: call.debugId, refundStatus: refund.status, refundedCents: toMinor(refund.amount.value, refund.amount.currency_code), error: undefined }, "refunded");
 
