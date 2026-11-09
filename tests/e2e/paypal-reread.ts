@@ -9,9 +9,9 @@ interface Amount {
 }
 
 export interface PayPalObjects {
-  order: { id: string; status: string; intent: string; purchase_units: { amount: Amount; custom_id?: string; payments: { captures: { id: string; status: string; amount: Amount }[]; refunds?: { id: string; status: string }[] } }[] };
+  order: { id: string; status: string; intent: string; purchase_units: { amount: Amount; custom_id?: string; invoice_id?: string; items?: { name: string; description?: string; quantity: string; unit_amount: Amount }[]; payments: { captures: { id: string; status: string; amount: Amount }[]; refunds?: { id: string; status: string }[] } }[] };
   capture: { id: string; status: string; amount: Amount };
-  refund?: { id: string; status: string; status_details?: { reason: string }; amount: Amount };
+  refund?: { id: string; status: string; status_details?: { reason: string }; amount: Amount; invoice_id?: string; note_to_payer?: string };
 }
 
 async function token(): Promise<string> {

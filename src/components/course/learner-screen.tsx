@@ -207,6 +207,12 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
           This page updates when it settles.
         </p>
       ) : null}
+      {refund.paypalNote ? (
+        <p data-testid="refund-paypal-note" className="mt-4 rounded-lg bg-white/70 px-3 py-2 text-sm text-zinc-700">
+          <span className="block text-xs font-medium uppercase tracking-wide text-zinc-500">PayPal&rsquo;s note to you, on the refund</span>
+          {refund.paypalNote}
+        </p>
+      ) : null}
       {refund.viaDispute ? (
         <p data-testid="refund-via-dispute" className="mt-4 text-sm text-zinc-600">
           Paid by accepting your PayPal dispute, so the dispute is closed in your favour.
@@ -384,7 +390,7 @@ export function LearnerScreen({ id }: { id: string }) {
           enrollment.payment?.capturedCents === undefined ? undefined : (
             <span data-testid="receipt" className="flex flex-col gap-1">
               <span>{`${formatCents(enrollment.payment.capturedCents)} paid through PayPal, order ${enrollment.payment.orderId}.`}</span>
-              <RubricTerms lock={enrollment.rubric} checkHref={shown.checkHref} className="text-sm" />
+              <RubricTerms lock={enrollment.rubric} checkHref={shown.checkHref} enrollmentId={enrollment.id} className="text-sm" />
             </span>
           )
         }

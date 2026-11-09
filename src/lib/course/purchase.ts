@@ -6,10 +6,11 @@ import { Guard } from "@/lib/agent/guard";
 import { getDailyMoneyCounter } from "@/lib/agent/policy";
 import { withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
-import { moneyFromMinor, toMinor } from "@/lib/money";
+import { toMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import { singleton } from "@/lib/singleton";
-import { course, CURRENCY } from "./content";
+import { course } from "./content";
+import { orderPurchaseUnit } from "./order-terms";
 import { creatorCourse } from "./creator-store";
 import { enrollmentChannel } from "./scope";
 import { createEnrollment, recoveredUnstartedFor, requireEnrollment, saveEnrollment, unpaidFor } from "./enrollments";
@@ -85,7 +86,8 @@ export async function startPurchase(learnerName: string, learnerEmail: string, o
     getPayPal().orders.create(
       {
         intent: "CAPTURE",
-        purchase_units: [{ amount: moneyFromMinor(created.priceCents, CURRENCY), description, custom_id: created.id }],
+        // PayPal's window lists the course with its rubric fingerprint and the refund rule.
+        purchase_units: [orderPurchaseUnit(created, description)],
       },
       { requestId: `order-${created.id}` },
     ),

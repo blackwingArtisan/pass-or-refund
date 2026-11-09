@@ -146,6 +146,10 @@ export interface Refund {
   /** Set when code built the proposal because the AI agent couldn't. Says why. */
   proposedWithoutAi?: string;
   refundedCents?: number;
+  /** The note_to_payer on PayPal's refund, as PayPal reads it back: what PayPal told the learner. */
+  paypalNote?: string;
+  /** The invoice_id on PayPal's refund, read back: the rubric fingerprint the purchase locked. */
+  paypalInvoiceId?: string;
   captureStatus?: string;
   rereadAt?: string;
   /** When PayPal's PAYMENT.CAPTURE.REFUNDED webhook reached us, and the status it carried. */

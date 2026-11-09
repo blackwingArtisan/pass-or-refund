@@ -1,9 +1,11 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { connection } from "next/server";
 import { CircleAlert, CircleCheck, Fingerprint } from "lucide-react";
 import { ReceiptCheckForm } from "@/components/course/receipt-check";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Card, CardBody, CardHeader } from "@/components/ui";
+import { readOrderTerms, type PayPalTermsCheck } from "@/lib/course/order-terms";
 import { checkFingerprint, rubricFingerprint, rubricOnSaleNow } from "@/lib/course/rubric-lock";
 
 export const metadata = { title: "The public rubric" };
@@ -11,9 +13,35 @@ export const metadata = { title: "The public rubric" };
 /** "3f2a9c1e04b7" -> "3f2a 9c1e 04b7", easier to compare by eye. */
 const grouped = (fingerprint: string) => fingerprint.match(/.{1,4}/g)?.join(" ") ?? fingerprint;
 
-function CheckResult({ version, fingerprint }: { version: string; fingerprint: string }) {
+/** The third row: PayPal's own record of the learner's order, read back with GET /v2/checkout/orders/{id}. */
+function PayPalRow({ terms }: { terms: PayPalTermsCheck }) {
+  const agrees = terms.status === "matches";
+  return (
+    <div data-testid="paypal-order-terms" data-status={terms.status} className="mt-2 border-t border-current/15 pt-2">
+      <p>
+        PayPal&rsquo;s record of your order{" "}
+        <code className="rounded bg-white/70 px-1 font-mono text-xs" data-testid="paypal-order-call">
+          GET /v2/checkout/orders/{terms.orderId}
+        </code>
+        :{" "}
+        {terms.status === "missing" ? (
+          "this order was placed before the terms were written on PayPal's record, so PayPal holds no fingerprint for it."
+        ) : (
+          <>
+            invoice_id <code className="font-mono" data-testid="paypal-invoice-id">{terms.invoiceId ?? "none"}</code>, item &ldquo;<span data-testid="paypal-item-name">{terms.itemName ?? "none"}</span>&rdquo;
+            {agrees ? ", the same fingerprint." : ", which differs from the fingerprint on your receipt."}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function CheckResult({ version, fingerprint, terms }: { version: string; fingerprint: string; terms?: PayPalTermsCheck | null }) {
   const check = checkFingerprint({ version, fingerprint });
-  const matches = check.status === "matches";
+  // With PayPal's record read, "matches" needs all three: the receipt, the rubric on sale and PayPal's order.
+  const paypalDiffers = terms?.status === "changed" || (terms?.status === "matches" && !terms.itemName?.includes(check.bought.fingerprint));
+  const matches = check.status === "matches" && !paypalDiffers;
   return (
     <div
       data-testid="fingerprint-check"
@@ -22,7 +50,8 @@ function CheckResult({ version, fingerprint }: { version: string; fingerprint: s
     >
       <p className="flex items-center gap-2 font-semibold">
         {matches ? <CircleCheck className="size-4" aria-hidden /> : <CircleAlert className="size-4" aria-hidden />}
-        <span data-testid="fingerprint-verdict">{matches ? "Matches" : "Changed since you bought"}</span>
+        <span data-testid="fingerprint-verdict">{matches ? "Matches" : paypalDiffers && check.status === "matches" ? "PayPal's record differs" : "Changed since you bought"}</span>
+        {terms && terms.status !== "missing" ? <span className="font-normal">{matches ? "Your receipt, the rubric on sale and PayPal's record of your order all carry it." : null}</span> : null}
       </p>
       <p className="mt-1">
         Your receipt says rubric v{check.bought.version}, fingerprint <code className="font-mono">{grouped(check.bought.fingerprint)}</code>. This page shows v{check.onSale.version}, fingerprint{" "}
@@ -35,16 +64,22 @@ function CheckResult({ version, fingerprint }: { version: string; fingerprint: s
             ? `The rubric on sale now differs from yours. Your attempts are still graded on v${check.bought.version}, the one you bought.`
             : "We have no rubric with your fingerprint on file, so grading would stop rather than use different words. Contact the course team."}
       </p>
+      {terms ? <PayPalRow terms={terms} /> : null}
     </div>
   );
 }
 
-type Search = Promise<{ v?: string; fp?: string }>;
+type Search = Promise<{ v?: string; fp?: string; en?: string }>;
 
 /** Only the check reads the address, so the rest of the page prerenders. */
 async function CheckFromAddress({ searchParams, version }: { searchParams: Search; version: string }) {
-  const { v, fp } = await searchParams;
-  return fp ? <CheckResult version={v ?? version} fingerprint={fp} /> : null;
+  const { v, fp, en } = await searchParams;
+  if (!fp) return null;
+  // A learner's own receipt link names their purchase, so PayPal's record of it is read too.
+  // Reading PayPal happens at request time, never while the page prerenders.
+  if (en) await connection();
+  const terms = en ? await readOrderTerms(en) : null;
+  return <CheckResult version={v ?? version} fingerprint={fp} terms={terms} />;
 }
 
 export default function RubricPage({ searchParams }: { searchParams: Search }) {

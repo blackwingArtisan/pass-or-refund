@@ -56,6 +56,14 @@ describe("server SDK PayPal client", () => {
     expect(JSON.parse(requests[0].data!)).toEqual({ intent: "CAPTURE", purchase_units: [{ amount: { currency_code: "USD", value: "49.00" }, custom_id: "en_1", description: "Sharp at Home" }] });
   });
 
+  it("sends the order's item line, item total and invoice_id, so PayPal's window and records carry the terms", async () => {
+    const { paypal, requests } = stubbed(() => ({ status: 201, body: { id: "ORDER2", status: "CREATED" } }));
+    const price = { currency_code: "USD", value: "49.00" };
+    const item = { name: "Sharp at Home · rubric v1 · ada21f9fbe03", description: "Full refund if you fail the public final check twice.", quantity: "1", unit_amount: price, category: "DIGITAL_GOODS" };
+    await paypal.orders.create({ intent: "CAPTURE", purchase_units: [{ amount: { ...price, breakdown: { item_total: price } }, custom_id: "en_2", invoice_id: "PR-v1-ada21f9fbe03-en_2", items: [item] }] }, { requestId: "order-en_2" });
+    expect(JSON.parse(requests[0].data!)).toEqual({ intent: "CAPTURE", purchase_units: [{ amount: { ...price, breakdown: { item_total: price } }, custom_id: "en_2", invoice_id: "PR-v1-ada21f9fbe03-en_2", items: [item] }] });
+  });
+
   it("returns PayPal's own JSON with snake_case fields", async () => {
     const body = { id: "ORDER1", status: "COMPLETED", purchase_units: [{ payments: { captures: [CAPTURE] } }] };
     const { paypal, requests } = stubbed(() => ({ status: 201, body }));
@@ -67,11 +75,11 @@ describe("server SDK PayPal client", () => {
 
   it("refunds with the amount from the caller and reads the refund back", async () => {
     const { paypal, requests } = stubbed(() => ({ status: 201, body: REFUND }));
-    const refund = await paypal.payments.refundCapture("CAP1", { amount: { currency_code: "USD", value: "49.00" }, note_to_payer: "Sorry" }, { requestId: "refund-1" });
+    const refund = await paypal.payments.refundCapture("CAP1", { amount: { currency_code: "USD", value: "49.00" }, invoice_id: "PR-v1-x-en_1", note_to_payer: "Sorry" }, { requestId: "refund-1" });
     expect(refund).toMatchObject({ id: "REF1", status: "COMPLETED" });
     expect(requests[0].url).toContain("/v2/payments/captures/CAP1/refund");
     expect(requests[0].headers["PayPal-Request-Id"]).toBe("refund-1");
-    expect(JSON.parse(requests[0].data!)).toEqual({ amount: { currency_code: "USD", value: "49.00" }, note_to_payer: "Sorry" });
+    expect(JSON.parse(requests[0].data!)).toEqual({ amount: { currency_code: "USD", value: "49.00" }, invoice_id: "PR-v1-x-en_1", note_to_payer: "Sorry" });
 
     await paypal.payments.getRefund("REF1");
     expect(requests[1].url).toContain("/v2/payments/refunds/REF1");

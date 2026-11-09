@@ -802,6 +802,7 @@ test.describe("mock-safe flows", () => {
     const team = await approveOnTeam(page, id);
     await expect(team.getByTestId("team-refund-done")).toContainText(`Refund issued: $${PRICE} back to Alex Rivera.`, { timeout: 60_000 });
     await expect(team.getByTestId("team-refund-done")).toContainText("PayPal reports it COMPLETED");
+    await expect(team.getByTestId("team-paypal-note")).toContainText("What PayPal told the learner: Guarantee refund, rubric v1", { timeout: 30_000 });
     const hooks = await webhooksArrive(request);
     if (hooks) await refundWebhookShows(team, request, id);
     await team.getByTestId("learner-link").click();
@@ -811,6 +812,10 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("refund-status")).toHaveText("COMPLETED", { timeout: 30_000 });
     await expect(page.getByTestId("capture-status")).toHaveText(sandboxRefund!.captureStatus!);
     await expect(page.getByTestId("refund-amount")).toHaveText(`$${PRICE}`);
+    // PayPal's note to the learner, read back from PayPal's refund: the rubric fingerprint and both scores, written by code.
+    const terms = (await enrollmentOf(request, id)).rubric!;
+    const note = `Guarantee refund, rubric v${terms.version} ${terms.fingerprint}: scored ${first} and ${second}, pass mark 70. Sorry we let you down.`;
+    await expect(page.getByTestId("refund-paypal-note")).toContainText(note);
     await page.screenshot({ path: "screenshots/refund-issued.png" });
     await noMockWhenLive(page);
 
@@ -828,6 +833,12 @@ test.describe("mock-safe flows", () => {
       expect(paypal.order.status).toBe("COMPLETED");
       expect(paypal.order.intent).toBe("CAPTURE");
       expect(paypal.order.purchase_units[0].custom_id).toBe(id);
+      const invoiceId = `PR-v${terms.version}-${terms.fingerprint}-${id}`;
+      console.log("PayPal terms re-read:", JSON.stringify({ order_invoice_id: paypal.order.purchase_units[0].invoice_id, item: paypal.order.purchase_units[0].items?.[0]?.name, refund_invoice_id: paypal.refund?.invoice_id, note_to_payer: paypal.refund?.note_to_payer }));
+      expect(paypal.order.purchase_units[0].invoice_id).toBe(invoiceId);
+      expect(paypal.order.purchase_units[0].items?.[0]?.name).toContain(`rubric v${terms.version} · ${terms.fingerprint}`);
+      expect(paypal.refund?.invoice_id).toBe(invoiceId);
+      expect(paypal.refund?.note_to_payer).toBe(note);
       expect(paypal.capture.amount).toEqual({ currency_code: "USD", value: PRICE });
       expect(paypal.capture.status).toBe(refund!.captureStatus);
       // This app's seller is funded, so a refund settles at once. PENDING (reason ECHECK) means the balance ran short.
@@ -845,7 +856,15 @@ test.describe("mock-safe flows", () => {
     await expect(page.getByTestId("sandbox-test-card")).toHaveCount(0); // the server-side shortcut is for tests only
     await page.getByTestId("learner-name").filter({ visible: true }).fill("Pat Window");
     await page.getByTestId("learner-email").filter({ visible: true }).fill(newEmail("Pat Window"));
-    await payInPayPalWindow(page);
+    // PayPal's window may list the order's item line: the rubric fingerprint and the refund rule. Logged, not required, since PayPal picks the page variant.
+    let windowText = "";
+    await payInPayPalWindow(page, {
+      onForm: async (popup) => {
+        windowText = await popup.locator("body").innerText().catch(() => "");
+        await popup.screenshot({ path: "screenshots/paypal-window-terms.png", fullPage: true }).catch(() => undefined);
+      },
+    });
+    console.log("PayPal's window shows the rubric terms:", /rubric v\d+ · [0-9a-f]{12}/.test(windowText));
     await page.waitForURL(/\/learn\/en_/, { timeout: 90_000 });
     const id = page.url().split("/learn/")[1];
     const { payment } = await enrollmentOf(request, id);
@@ -854,6 +873,7 @@ test.describe("mock-safe flows", () => {
     console.log("PayPal window purchase:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value] }));
     expect(paypal.order.status).toBe("COMPLETED");
     expect(paypal.capture).toMatchObject({ status: "COMPLETED", amount: { currency_code: "USD", value: PRICE } });
+    expect(paypal.order.purchase_units[0].invoice_id).toMatch(new RegExp(`^PR-v1-[0-9a-f]{12}-${id}$`));
   });
 
   test("PayPal approves but its window never tells the page: the page finds the payment and closes the window", async ({ page, request }) => {
@@ -948,6 +968,23 @@ test.describe("mock-safe flows", () => {
     await expect(verdict).toHaveText("Matches");
     await expect(checked).toContainText("word for word the one you bought");
     expect(bought).toBe(published);
+    // The third way: PayPal's own record of the order, read back from PayPal, carries the same fingerprint.
+    const fayId = page.url().includes("en=") ? new URL(page.url()).searchParams.get("en")! : "";
+    expect(fayId).toMatch(/^en_/);
+    const paypalRow = checked.getByTestId("paypal-order-terms");
+    await expect(paypalRow).toHaveAttribute("data-status", "matches");
+    await expect(checked).toContainText("Your receipt, the rubric on sale and PayPal's record of your order all carry it.");
+    const { payment: fayPayment } = await enrollmentOf(request, fayId);
+    await expect(paypalRow.getByTestId("paypal-order-call")).toHaveText(`GET /v2/checkout/orders/${fayPayment!.orderId}`);
+    await expect(paypalRow.getByTestId("paypal-invoice-id")).toHaveText(`PR-v1-${published}-${fayId}`);
+    await expect(paypalRow.getByTestId("paypal-item-name")).toContainText(`rubric v1 · ${published}`);
+    if ((await mode(request)) === "sandbox") {
+      const paypal = await readPayPalObjects(fayPayment!.orderId, fayPayment!.captureId!);
+      console.log("PayPal order terms:", JSON.stringify({ order: paypal.order.id, invoice_id: paypal.order.purchase_units[0].invoice_id, item: paypal.order.purchase_units[0].items?.[0]?.name }));
+      expect(paypal.order.purchase_units[0].invoice_id).toBe(`PR-v1-${published}-${fayId}`);
+      expect(paypal.order.purchase_units[0].items?.[0]?.name).toContain(`rubric v1 · ${published}`);
+      expect(paypal.order.purchase_units[0].items?.[0]?.description).toContain("Full refund if you fail the public final check twice.");
+    }
     await checked.screenshot({ path: "screenshots/fingerprint-matches.png" });
 
     // A receipt from a rubric that has since been edited: one character off.
