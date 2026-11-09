@@ -28,7 +28,7 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         Object.assign(el.style, {
           position: "fixed", left: "0", right: "0", bottom: "0", height: `${band}px`, zIndex: "2147483647",
           display: "flex", alignItems: "center", justifyContent: "center", padding: "0 48px", boxSizing: "border-box",
-          background: "rgba(9,9,11,0.94)", color: "#fff", font: "600 26px/1.3 var(--font-sans)",
+          background: "rgba(9,9,11,0.94)", color: "#fff", font: "600 26px/1.3 var(--font-sans, system-ui, -apple-system, sans-serif)",
           textAlign: "center", opacity: "0", transition: "opacity .3s", pointerEvents: "none",
         });
         document.body.appendChild(el);
@@ -58,7 +58,7 @@ export async function titleCard(page: Page, title: string, subtitle = "", ms = 3
     ({ title, subtitle }) => {
       const el = document.createElement("div");
       el.id = "__demo_title";
-      el.innerHTML = `<div style="font:700 56px/1.1 var(--font-sans);letter-spacing:-0.02em">${title}</div>${subtitle ? `<div style="margin-top:18px;font:500 26px/1.4 var(--font-sans);opacity:.8">${subtitle}</div>` : ""}`;
+      el.innerHTML = `<div style="font:700 56px/1.1 var(--font-sans, system-ui, -apple-system, sans-serif);letter-spacing:-0.02em">${title}</div>${subtitle ? `<div style="margin-top:18px;font:500 26px/1.4 var(--font-sans, system-ui, -apple-system, sans-serif);opacity:.8">${subtitle}</div>` : ""}`;
       Object.assign(el.style, {
         position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         textAlign: "center", padding: "48px", color: "#fff", background: "radial-gradient(ellipse at top, var(--brand, #0070e0), #0b1020 70%)",
