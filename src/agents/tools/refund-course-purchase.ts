@@ -16,6 +16,7 @@ import type { Refund } from "@/lib/course/types";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor, toMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
+import { runWithCallMeta, type CallMeta } from "@/lib/paypal/meta";
 
 export const REFUND_COURSE_PURCHASE = "refund_course_purchase";
 
@@ -83,9 +84,10 @@ export const refundCoursePurchase = (enrollmentId: string) =>
     },
     execute: async (i, ctx) => {
       const { amount, captureId } = await checked(enrollmentId, i.amount, ctx.paypal);
-      const refund = await ctx.paypal.payments.refundCapture(captureId, { amount, note_to_payer: `Refund for ${course.title}. Sorry we let you down.` }, { requestId: ctx.requestId });
+      const call: CallMeta = {};
+      const refund = await runWithCallMeta(call, () => ctx.paypal.payments.refundCapture(captureId, { amount, note_to_payer: `Refund for ${course.title}. Sorry we let you down.` }, { requestId: ctx.requestId }));
       // Saved before the read-back: if that read fails, the record must still say the money moved.
-      updateRefund(enrollmentId, { refundId: refund.id, refundStatus: refund.status, refundedCents: toMinor(refund.amount.value, refund.amount.currency_code), error: undefined }, "refunded");
+      updateRefund(enrollmentId, { refundId: refund.id, debugId: call.debugId, refundStatus: refund.status, refundedCents: toMinor(refund.amount.value, refund.amount.currency_code), error: undefined }, "refunded");
 
       const { refund: paid } = await readBackRefund(enrollmentId, ctx.paypal);
       return { refund_id: refund.id, status: paid?.refundStatus, refunded_cents: paid?.refundedCents, capture_status: paid?.captureStatus };

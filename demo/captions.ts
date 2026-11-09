@@ -107,9 +107,26 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
  * Times on the main page's video, so scripts/demo-edit.mjs can drop waits and splice in PayPal's
  * window. The video starts with the page, a moment before the test body runs.
  */
+/** A slow zoom into part of the frame: up to `to` times, toward the point at fractions ax, ay of the spare room. */
+export interface Zoom {
+  to: number;
+  ax: number;
+  ay: number;
+}
+
+/** A zoom that centres on `target` as far as the frame allows. */
+export async function zoomOn(page: Page, target: Locator, to = 1.6): Promise<Zoom> {
+  const box = await target.boundingBox();
+  const view = page.viewportSize() ?? { width: 1280, height: 800 };
+  if (!box) return { to, ax: 0.5, ay: 0.5 };
+  const anchor = (centre: number, size: number) => Math.min(1, Math.max(0, (centre - size / (2 * to)) / (size - size / to)));
+  return { to, ax: anchor(box.x + box.width / 2, view.width), ay: anchor(box.y + box.height / 2, view.height) };
+}
+
 export class DemoCuts {
   private readonly start = Date.now();
-  readonly parts: { src: string; from: number; to?: number }[] = [];
+  readonly parts: { src: string; from: number; to?: number; zoom?: Zoom }[] = [];
+  private zooming?: Zoom;
   private keptFrom = 0;
   private paused: boolean;
   /** `paused` starts with nothing kept, for setup that happens before the story does. */
@@ -122,8 +139,22 @@ export class DemoCuts {
   /** Stops keeping the main video here; `keep` seconds of what follows stay in. */
   pause(keep = 1.2) {
     if (this.paused) return;
-    this.parts.push({ src: "main", from: this.keptFrom, to: this.now + keep });
+    this.parts.push({ src: "main", from: this.keptFrom, to: this.now + keep, ...this.zoomed() });
     this.paused = true;
+  }
+  private zoomed() {
+    return this.zooming ? { zoom: this.zooming } : {};
+  }
+  /** From here the edit zooms slowly in (see Zoom), until unzoom(). */
+  zoom(zoom: Zoom | undefined) {
+    if (!this.paused) {
+      this.parts.push({ src: "main", from: this.keptFrom, to: this.now, ...this.zoomed() });
+      this.keptFrom = this.now;
+    }
+    this.zooming = zoom;
+  }
+  unzoom() {
+    this.zoom(undefined);
   }
   resume() {
     if (!this.paused) return;
@@ -139,13 +170,13 @@ export class DemoCuts {
     this.paused = true;
   }
   /** Drops the main video from here and plays these stretches of another recording; resume() picks the main one up again. */
-  clips(src: string, stretches: { from: number; to: number }[]) {
-    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, to: this.now });
+  clips(src: string, stretches: { from: number; to: number }[], zoom?: Zoom) {
+    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, to: this.now, ...this.zoomed() });
     // Stretches that touch or overlap play once, as one.
     let last: { src: string; from: number; to?: number } | undefined;
     for (const { from, to } of [...stretches].sort((a, b) => a.from - b.from)) {
       if (last && from <= last.to!) last.to = Math.max(last.to!, to);
-      else this.parts.push((last = { src, from: Math.max(0, from), to }));
+      else this.parts.push((last = { src, from: Math.max(0, from), to, ...(zoom ? { zoom } : {}) }));
     }
     this.paused = true;
   }
@@ -155,7 +186,7 @@ export class DemoCuts {
     return Math.round(kept + (this.paused ? 0 : this.now - this.keptFrom));
   }
   finish() {
-    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom });
+    if (!this.paused) this.parts.push({ src: "main", from: this.keptFrom, ...this.zoomed() });
     return this.parts;
   }
 }

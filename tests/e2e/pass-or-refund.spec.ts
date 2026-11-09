@@ -644,6 +644,10 @@ test.describe("mock-safe flows", () => {
 
     const { refund } = await enrollmentOf(request, id);
     await expect(page.getByTestId("refund-id")).toHaveText(refund!.refundId!);
+    // PayPal's debug id for the refund call, on the card beside the refund id.
+    expect(refund!.debugId).toMatch(/^\w+$/);
+    await expect(page.getByTestId("refund-debug-id")).toHaveText(refund!.debugId!);
+    if (sandbox) console.log("Refund debug_id:", refund!.debugId);
     if (sandbox) {
       const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!, refund!.refundId);
       console.log("PayPal re-read:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value], refund: [paypal.refund?.id, paypal.refund?.status, paypal.refund?.status_details?.reason, paypal.refund?.amount.value] }));

@@ -2,30 +2,33 @@
  * DEMO VIDEO (npm run demo:record, then npm run demo:edit). The story, in order:
  *   0. a title line on who it's for
  *   1. the creator's case on the home page
- *   2. paying in PayPal's own window with the sandbox test card, shown once the card form is filled
- *   3. a weak answer, graded with a quote from it
+ *   2. paying in PayPal's own window with the sandbox test card, held 8-10 s with a slow zoom
+ *   3. a weak answer in Jordan's own words, graded, with one quote zoomed in to read
  *   4. another learner trying to trick the grader, flagged
  *   5. the second fail
  *   6. the course team's approval card, held 6-8 s on the agent's summary and reasons, then approved
- *   7. "Refund issued", with the refund id, COMPLETED and PayPal's webhook line, held 4-5 s
+ *   7. "Refund issued", with the refund id, COMPLETED, PayPal's debug_id and the webhook line, held 4-5 s
  *   8. a passing learner's certificate
  *   9. /cohort and its "Fix first" line, as the close
  * The edited cut, PayPal's window included, stays under 2:30. The captions are the voiceover script:
  * videos/demo-voiceover.txt lists each line at its time in the edited cut. The two side learners
- * (4 and 8) are set up first, off camera.
- * Local check: mock AI (DEMO_AI_MODE unset), mock or sandbox PayPal. Submission cut: DEMO_PAYPAL_MODE=sandbox
- * DEMO_AI_MODE=live. A local sandbox gets no PayPal webhooks, so beat 7's webhook line only shows on
+ * (4 and 8) are set up first, off camera. The video is 1280x800 and shows only the learner and creator
+ * screens: DEMO_CLEAN (on unless DEMO_CLEAN=0) hides the For judges menu, so Jordan types every answer.
+ * Local check: mock AI (DEMO_AI_MODE unset), mock or sandbox PayPal. Submission cut: the hosted app with
+ * live AI, DEMO_BASE_URL=https://… (nothing is started locally). A local sandbox gets no PayPal webhooks, so beat 7's webhook line only shows on
  * the hosted app or with mock PayPal; the run logs which.
  */
 import fs from "node:fs";
-import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { payInPayPalWindow } from "../tests/e2e/paypal-popup";
-import { caption, centre, DemoClock, DemoCuts, highlight, titleCard } from "./captions";
+import { samples } from "../src/lib/course/samples";
+import { caption, centre, DemoClock, DemoCuts, highlight, titleCard, zoomOn } from "./captions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const EDITED_LIMIT_SECONDS = 150;
-/** PayPal's window, spliced in from its own recording: the filled card form and the pay click. */
-const PAYPAL_CLIP_SECONDS = 3;
+/** PayPal's window, spliced in from its own recording: the filled card form, held, then the pay click. */
+const PAYPAL_CLIP_SECONDS = 9;
+const SIZE = { width: 1280, height: 800 };
 const WEAK_ANSWER = "Honing sharpens the knife. Her brother is right, she should hone it for longer every Sunday.";
 const email = (name: string) => `${name.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@example.com`;
 
@@ -53,8 +56,11 @@ async function submitPrepared(page: Page, sample: string, number: number) {
 
 /** The two learners beside Jordan: one tries to trick the grader, one passes. Their pages aren't recorded. */
 async function sideLearners(browser: Browser, baseURL: string, sandbox: boolean) {
+  // Not clean: these learners use the judges' prepared answers, and the home page's judge box has the team passcode.
   const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: "por_judge", value: "1" }] }] } });
   const page = await context.newPage();
+  await page.goto("/");
+  const passcode = (await page.getByTestId("team-passcode-shown").innerText()).trim();
   const trick = await buyOffCamera(page, "Sam Ortiz", sandbox);
   await submitPrepared(page, "inject", 1);
   await expect(page.getByTestId("flagged")).toBeVisible();
@@ -62,13 +68,20 @@ async function sideLearners(browser: Browser, baseURL: string, sandbox: boolean)
   await submitPrepared(page, "pass", 1);
   await expect(page.getByTestId("certificate")).toBeVisible();
   await context.close();
-  return { trick, pass };
+  return { trick, pass, passcode };
 }
 
-async function unlockTeam(page: Page, request: APIRequestContext) {
-  const passcode = (await page.getByTestId("team-passcode-shown").innerText()).trim();
+/** Signs the recorded browser in as the course team, off screen. */
+async function unlockTeam(page: Page, passcode: string) {
   expect((await page.request.post("/api/team/session", { data: { passcode } })).ok()).toBe(true);
-  void request;
+}
+
+/** Types an answer into the final check, as a learner would. */
+async function typeAnswer(page: Page, question: string, text: string, delay = 0) {
+  const box = page.getByTestId(`answer-${question}`);
+  await box.fill("");
+  if (delay) await box.pressSequentially(text, { delay });
+  else await box.fill(text);
 }
 
 test("demo", async ({ page, request, browser, baseURL }) => {
@@ -96,7 +109,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await page.goto("/");
   const headline = page.getByTestId("story-headline");
   await headline.waitFor();
-  await unlockTeam(page, request);
+  await unlockTeam(page, side.passcode);
   cuts.resume(); // The side learners above are off camera, and the cut opens on the loaded home page.
   script.push({ at: 0, text: "Pass or Refund. For online course creators who want a refund guarantee their buyers can actually check." });
   await titleCard(page, "Pass or Refund", "For online course creators: a refund guarantee your buyers can check", 3400);
@@ -121,15 +134,17 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     const marks: number[] = [];
     const since = () => (Date.now() - openedAt) / 1000;
     popup = await payInPayPalWindow(page, {
-      onOpen: async () => {
+      onOpen: async (p) => {
         openedAt = Date.now();
         cuts.pause(0.3); // While PayPal's window is open, its own recording plays instead.
+        await p.setViewportSize(SIZE); // fills the frame, like the main video
       },
       onFilled: async (p) => {
-        marks.push(since());
         // The window is shown from here: the card form already filled, never PayPal's loading frames.
+        await p.locator("#cardNumber").scrollIntoViewIfNeeded().catch(() => undefined);
+        marks.push(since());
         await say(p, "Jordan pays in PayPal's own window, with the sandbox test card.", { wait: false, ms: 20_000 });
-        await sleep(600);
+        await sleep((PAYPAL_CLIP_SECONDS - 0.5) * 1000); // held, zooming slowly toward the pay button
       },
     }).catch(async (e) => {
       console.log(`[demo] PayPal window failed, paying with the server-side test card: ${(e as Error).message.split("\n")[0]}`);
@@ -144,7 +159,7 @@ test("demo", async ({ page, request, browser, baseURL }) => {
     });
     if (paypalWindow && marks.length === 1) {
       // The main video already stopped when the window opened, so only the filled form and the pay click go in.
-      cuts.clips("popup", [{ from: marks[0], to: marks[0] + PAYPAL_CLIP_SECONDS }]);
+      cuts.clips("popup", [{ from: marks[0], to: marks[0] + PAYPAL_CLIP_SECONDS }], { to: 1.35, ax: 0.5, ay: 1 });
     } else {
       paypalWindow = false;
     }
@@ -158,18 +173,14 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await say(page, "PayPal captures the $49. The rubric Jordan is graded on is locked to this purchase.", { ms: 3400 });
   beat("bought");
 
-  // 3. A weak answer, graded with its quote
-  await page.getByTestId("judge-tools").locator("summary").click();
-  const toggle = page.getByTestId("judge-toggle");
-  await centre(toggle);
-  await highlight(page, toggle, 1400);
-  await toggle.click();
-  await page.getByTestId("sample-fail1").click();
+  // 3. A weak answer in Jordan's own words, graded with its quote
+  cuts.pause(0.2); // the later answers go in off camera; the first one is typed on camera
+  for (const q of ["q2", "q3", "q4"]) await typeAnswer(page, q, samples.fail1[q]);
   const answer = page.getByTestId("answer-q1");
   await centre(answer);
-  await say(page, "Jordan takes the final check. Judges can fill in prepared answers.", { wait: false, ms: 5000 });
-  await answer.fill("");
-  await answer.pressSequentially(WEAK_ANSWER, { delay: 18 });
+  cuts.resume();
+  await say(page, "Jordan takes the final check, in their own words.", { wait: false, ms: 5000 });
+  await typeAnswer(page, "q1", WEAK_ANSWER, 18);
   await page.getByTestId("submit-attempt").click();
   await sleep(400);
   cuts.pause(0.8);
@@ -177,8 +188,13 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   cuts.resume();
   const question = page.getByTestId("question-1-q1");
   await centre(question);
-  await highlight(page, question, 2600);
-  await say(page, "Claude marks every rubric line, and backs each mark with a quote from Jordan's own answer.", { ms: 3800 });
+  await highlight(page, question, 1200);
+  // One graded line, zoomed in far enough to read its quote.
+  const quote = question.locator("blockquote").first();
+  await quote.waitFor();
+  cuts.zoom(await zoomOn(page, quote, 1.6));
+  await say(page, "Claude marks every rubric line, and backs each mark with a quote from Jordan's own answer.", { ms: 4200 });
+  cuts.unzoom();
   const score = page.getByTestId("score-1");
   await centre(score);
   await highlight(page, score, 1800);
@@ -208,8 +224,10 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await page.goto(jordan);
   await page.getByTestId("submit-attempt").waitFor();
   cuts.resume();
-  await page.getByTestId("sample-fail2").click();
+  cuts.pause(0.2); // typed off camera
+  for (const q of Object.keys(samples.fail2)) await typeAnswer(page, q, samples.fail2[q]);
   await centre(page.getByTestId("submit-attempt"));
+  cuts.resume();
   await say(page, "Back to Jordan. A day later, a second honest try.", { wait: false, ms: 3000 });
   await sleep(1200);
   await page.getByTestId("submit-attempt").click();
@@ -262,10 +280,12 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   cuts.resume();
   await expect(refundStatus, "a PENDING refund fails the demo: see the README on seller balance").toHaveText("COMPLETED");
   const amount = await page.getByTestId("refund-amount").innerText();
-  // Held 4-5 s: the refund id, COMPLETED and the webhook line, all in frame.
+  await expect(page.getByTestId("refund-debug-id")).toBeVisible();
+  // Held 4-5 s: the refund id, COMPLETED, the debug_id and the webhook line, all in frame.
   await centre(issued);
-  await highlight(page, issued, 3600);
-  await say(page, webhookShown ? `Refund issued: ${amount} back to Jordan, read back from PayPal, and confirmed by PayPal's webhook.` : `Refund issued: ${amount} back to Jordan, read back from PayPal.`, { ms: 3800 });
+  await highlight(page, issued, 2400);
+  await say(page, `Refund issued: ${amount} back to Jordan. PayPal's refund id, status COMPLETED, and its debug_id for the call.`, { ms: 3400 });
+  await say(page, webhookShown ? "Read back from PayPal, and confirmed by PayPal's webhook." : "Read back from PayPal itself.", { ms: 2200 });
   beat("refunded");
 
   // 8. A learner who passes gets a certificate
@@ -302,5 +322,5 @@ test("demo", async ({ page, request, browser, baseURL }) => {
   await page.close();
   await video?.saveAs("videos/demo-pass-or-refund.webm");
   if (popup && paypalWindow) await popup.video()?.saveAs("videos/demo-paypal-window.webm");
-  fs.writeFileSync("videos/demo-edit.json", JSON.stringify({ videos: { main: "videos/demo-pass-or-refund.webm", popup: "videos/demo-paypal-window.webm" }, parts }, null, 2));
+  fs.writeFileSync("videos/demo-edit.json", JSON.stringify({ size: `${SIZE.width}x${SIZE.height}`, videos: { main: "videos/demo-pass-or-refund.webm", popup: "videos/demo-paypal-window.webm" }, parts }, null, 2));
 });

@@ -141,6 +141,8 @@ describe("refund", () => {
     const { refund } = requireEnrollment(id);
     expect(refund).toMatchObject({ refundStatus: "COMPLETED", refundedCents: COURSE_PRICE_CENTS, captureStatus: "REFUNDED" });
     expect(refund?.refundId).toBeTruthy();
+    // PayPal's own reference for the refund call, for the refund card.
+    expect(refund?.debugId).toMatch(/^\w+$/);
   });
 
   it("moves no money on a decline, leaves a readable state, and the team can ask again", async () => {

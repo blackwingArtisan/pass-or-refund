@@ -173,6 +173,7 @@ function RefundIssued({ enrollment }: { enrollment: EnrollmentView }) {
     ["Refund status", refund.refundStatus, "refund-status"],
     ["Amount", refund.refundedCents === undefined ? undefined : formatCents(refund.refundedCents), "refund-amount"],
     ["Payment status", refund.captureStatus, "capture-status"],
+    ...(refund.debugId ? [["PayPal debug_id", refund.debugId, "refund-debug-id"]] : []),
   ];
   return (
     <div data-testid="refund-issued" className="rounded-2xl border-2 border-brand-200 bg-gradient-to-b from-brand-50 to-white px-6 py-8">
