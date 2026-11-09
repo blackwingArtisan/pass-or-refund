@@ -4,6 +4,7 @@
  */
 import { startStep } from "../events/bus";
 import type { MoneyDirection, ToolSource } from "../events/types";
+import type { Approval } from "./approvals";
 import type { Guard, GuardOutcome } from "./guard";
 import type { AgentTool } from "./tool";
 
@@ -26,6 +27,30 @@ function forModel(value: unknown): string {
   const json = JSON.stringify(value, (k, v) => (k === "links" ? undefined : v));
   if (!json) return "OK";
   return json.length > MAX_RESULT_CHARS ? `${json.slice(0, MAX_RESULT_CHARS)}…[truncated]` : json;
+}
+
+/** The approval a person gave, as code states it: "Approved by the course team at 19:58 UTC, before it ran." */
+export function approvalFact(approval: Pick<Approval, "decidedBy" | "decidedAt">): string {
+  const at = approval.decidedAt ? ` at ${approval.decidedAt.slice(11, 16)} UTC` : "";
+  return `Approved by ${approval.decidedBy ?? "a person"}${at}, before it ran.`;
+}
+
+/**
+ * A sentence that says a tool ran without a person's approval, or skipped or bypassed one. After a
+ * person approved the call, any such sentence is false, so code drops it.
+ */
+export const CLAIMS_NO_APPROVAL = /\b(without|no|never|not|skip\w*|bypass\w*|before any)\b[^.!?]{0,60}\b(approv\w*|paus\w*|person|human|review\w*)|\bunapproved\b|\b(didn'?t|did not|wasn'?t|was not|isn'?t)\b[^.!?]{0,40}\b(approv\w*|paus\w*|wait\w*)/i;
+
+/**
+ * What the agent says once a person has approved one of its calls: code's own sentence first, then
+ * the model's words, less any sentence that claims there was no approval.
+ */
+export function withApprovalFact(text: string, approved: Pick<Approval, "decidedBy" | "decidedAt">[]): string {
+  if (!approved.length) return text;
+  // Sentences end at a stop followed by a space, so "49.00" stays whole.
+  const kept = text.split(/(?<=[.!?])\s+/).filter((sentence) => !CLAIMS_NO_APPROVAL.test(sentence)).join(" ").trim();
+  const fact = approvalFact(approved.at(-1)!);
+  return kept ? `${fact} ${kept}` : fact;
 }
 
 function humanize(name: string) {
@@ -81,7 +106,9 @@ export async function runTool(tool: AgentTool, rawInput: unknown, ctx: { runId: 
       detail: outcome.replayed ? "Replayed stored result (idempotent)" : undefined,
       tool: { name: tool.name, source: tool.source, input, output: outcome.result },
     });
-    return { content: forModel(outcome.result), isError: false, outcome, output: outcome.result };
+    // A call a person approved says so in the result the model reads: who, when, and that it waited for them.
+    const content = outcome.approval?.state === "approved" ? forModel({ person_approval: { state: "approved", approval_id: outcome.approval.id, by: outcome.approval.decidedBy, at: outcome.approval.decidedAt, fact: approvalFact(outcome.approval) }, result: outcome.result }) : forModel(outcome.result);
+    return { content, isError: false, outcome, output: outcome.result };
   }
   if (outcome.status === "denied") {
     step.update({ status: "denied", detail: outcome.reason, error: { name: outcome.code, message: outcome.reason } });

@@ -5,7 +5,8 @@
  */
 import { timeline } from "../events/bus";
 import type { AgentDefinition, AgentInput, ScriptStep } from "./define";
-import { runTool } from "./execute";
+import type { Approval } from "./approvals";
+import { runTool, withApprovalFact } from "./execute";
 import type { Guard } from "./guard";
 import type { AgentRunResult } from "./loop";
 
@@ -18,6 +19,7 @@ export async function runScriptedAgent(opts: { runId: string; channel: string; d
   const results: Record<string, unknown> = {};
   const basePause = opts.pauseMs ?? 700;
   let lastSay = "";
+  const approved: Approval[] = [];
 
   for (const step of opts.script) {
     if (step.think) {
@@ -33,8 +35,9 @@ export async function runScriptedAgent(opts: { runId: string; channel: string; d
     if (!tool) throw new Error(`Script uses unknown tool "${step.tool}"`);
     const input = typeof step.input === "function" ? step.input(results) : (step.input ?? {});
     const r = await runTool(tool, input, { runId, actor, channel, guard });
+    if (r.outcome?.status === "executed" && r.outcome.approval?.state === "approved") approved.push(r.outcome.approval);
     if (step.as) results[step.as] = r.isError ? { error: JSON.parse(r.content) } : r.output;
     await sleep(basePause / 2);
   }
-  return { summary: lastSay, turns: opts.script.length, costUsd: 0, stopReason: "script_complete" };
+  return { summary: withApprovalFact(lastSay, approved), turns: opts.script.length, costUsd: 0, stopReason: "script_complete" };
 }

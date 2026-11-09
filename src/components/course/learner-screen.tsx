@@ -14,6 +14,7 @@ import { Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonCard, Te
 import { learnerLineText } from "@/lib/course/contest-rules";
 import { course, lessonForItem, lessons } from "@/lib/course/content";
 import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAnswered, FAILS_FOR_REFUND, formatCents, MAX_ANSWER_CHARS, MIN_POINTS_FOR_REFUND, missedItems } from "@/lib/course/policy";
+import { learnerSteps } from "@/lib/course/learner-steps";
 import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
 import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
@@ -430,7 +431,7 @@ export function LearnerScreen({ id }: { id: string }) {
     }
   }
 
-  const timelineSteps = useMemo(() => steps.filter(isCourseStep).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
+  const timelineSteps = useMemo(() => learnerSteps(steps.filter(isCourseStep)), [steps]);
 
   if (limited) return <LimitedLearner view={limited} />;
   if (missing) return <EmptyState title="We can't find that enrollment" description="It may have been cleared." action={<Link href="/course" className="text-sm font-medium text-brand">Back to the course</Link>} />;
