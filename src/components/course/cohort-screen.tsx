@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { col, DataGrid } from "@/components/data-grid";
 import { Badge, ButtonLink, Card, CardBody, CardHeader, EmptyState, SkeletonCard, Stat } from "@/components/ui";
 import { usePhone } from "@/components/course/use-phone";
+import { EarningsCard } from "@/components/course/earnings-card";
 import { formatUsd, type Cohort, type CourseSummary, type ItemSummary, type QuestionSummary, type RefundRow } from "@/lib/course/cohort";
 import type { CohortResponse } from "@/lib/course/cohort-response";
 
@@ -292,6 +293,8 @@ export function CohortScreen({ cohort }: { cohort: CohortResponse }) {
           }
         />
       ) : null}
+      {/* The creator's money for the sample course, read back from PayPal: what it sold, what the guarantee paid back. */}
+      <EarningsCard course="sample" className="mb-6" />
       {!empty ? (
         <>
           {worst && worst.answered > 0 && worst.missRate > 0 ? <FixFirst item={worst} /> : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, Copy, Fingerprint, Plus, Trash2 } from "lucide-react";
 import { ApiError, useKit } from "@/components/kit/kit-provider";
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { Button, Card, CardBody, CardHeader, Field, Input, Textarea } from "@/components/ui";
 import { formToInput, LIMITS, PRICE_DOLLARS, type RubricForm } from "@/lib/course/creator-rubric";
 import { formatCents } from "@/lib/course/policy";
+import { EarningsCard } from "./earnings-card";
 
 interface Published {
   id: string;
@@ -26,6 +27,26 @@ const STARTER: RubricForm = {
   questions: [{ text: "", lines: "" }],
 };
 
+/** Courses this browser set up, newest first, so a creator comes back to their earnings. Per browser only. */
+const MY_COURSES_KEY = "por_my_courses";
+function readMyCourses(): string[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(MY_COURSES_KEY) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string" && id.startsWith("cc_")) : [];
+  } catch {
+    return [];
+  }
+}
+function rememberCourse(id: string): string[] {
+  const mine = [id, ...readMyCourses().filter((c) => c !== id)].slice(0, 5);
+  try {
+    localStorage.setItem(MY_COURSES_KEY, JSON.stringify(mine));
+  } catch {
+    // Private windows can refuse storage; the card still shows for this visit.
+  }
+  return mine;
+}
+
 /** A creator sets up their own rubric: no account, no payment. They get its fingerprint and a link to share. */
 export function CreatorScreen() {
   const { kitFetch } = useKit();
@@ -38,6 +59,16 @@ export function CreatorScreen() {
   const [published, setPublished] = useState<Published | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // The courses whose earnings show here: ?course=cc_… first, then the ones this browser set up.
+  const [mine, setMine] = useState<string[]>([]);
+
+  useEffect(() => {
+    const asked = new URLSearchParams(window.location.search).get("course");
+    const ids = [...(asked?.startsWith("cc_") ? [asked] : []), ...readMyCourses()];
+    // Read once from the address and this browser's storage, after the server's HTML.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMine([...new Set(ids)].slice(0, 3));
+  }, []);
 
   const setQuestion = (index: number, patch: Partial<RubricForm["questions"][number]>) =>
     setForm((f) => ({ ...f, questions: f.questions.map((q, i) => (i === index ? { ...q, ...patch } : q)) }));
@@ -48,7 +79,9 @@ export function CreatorScreen() {
     setPublished(null);
     try {
       const json = mode === "json" ? { pasted, notes, price } : { rubric: formToInput(form), notes, price };
-      setPublished(await kitFetch<Published>("/api/creator/courses", { method: "POST", json }));
+      const made = await kitFetch<Published>("/api/creator/courses", { method: "POST", json });
+      setPublished(made);
+      setMine(rememberCourse(made.id).slice(0, 3));
     } catch (error) {
       const listed = error instanceof ApiError ? (error.body.error as { problems?: string[] } | undefined)?.problems : undefined;
       setProblems(listed ?? [error instanceof Error ? error.message : "Something went wrong. Please try again."]);
@@ -194,6 +227,9 @@ export function CreatorScreen() {
               </CardBody>
             </Card>
           ) : null}
+          {mine.map((id) => (
+            <EarningsCard key={id} course={id} />
+          ))}
           <Card>
             <CardBody className="space-y-2 text-sm text-zinc-600">
               <p className="font-semibold text-zinc-900">What this sets up</p>
