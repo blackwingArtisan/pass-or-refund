@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { creatorCourse } from "@/lib/course/creator-store";
+import { learnerCookie, withOwnerKey } from "@/lib/course/learner-access";
 import { resumePurchase, startPurchase } from "@/lib/course/purchase";
 import { getContext } from "@/lib/events/bus";
 import { isTestRun } from "@/lib/course/team-access";
@@ -19,8 +20,16 @@ export const POST = route(async (req) => {
   const { learnerName, learnerEmail, courseId } = await readJson(req, Body);
   // A creator's course must exist, with its rubric still matching its link, before anyone pays for it.
   if (courseId) creatorCourse(courseId);
-  const paid = await resumePurchase(learnerEmail, getContext().channel, courseId);
-  if (paid) return { enrollmentId: paid.id, alreadyPaid: true };
+  // The browser that starts the purchase holds its owner key, so it alone (and the course team) reads the learner's name and answers.
+  const owned = (enrollment: { id: string; ownerKey?: string }, body: object) => {
+    const cookie = learnerCookie(req, enrollment);
+    return Response.json(body, cookie ? { headers: { "Set-Cookie": cookie } } : undefined);
+  };
+  const resumed = await resumePurchase(learnerEmail, getContext().channel, courseId);
+  if (resumed) {
+    const paid = withOwnerKey(resumed);
+    return owned(paid, { enrollmentId: paid.id, alreadyPaid: true });
+  }
   const { enrollment, orderId } = await startPurchase(learnerName, learnerEmail, { testRun: isTestRun(req), courseId });
-  return { enrollmentId: enrollment.id, orderId };
+  return owned(enrollment, { enrollmentId: enrollment.id, orderId });
 });

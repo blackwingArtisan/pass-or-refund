@@ -17,7 +17,7 @@ import { ATTEMPT_GAP_HOURS, attemptComplete, countsTowardRefund, everyQuestionAn
 import { enrollmentChannel, isCourseStep } from "@/lib/course/scope";
 import { SAMPLE_PASS_ID } from "@/lib/course/sample-ids";
 import { samples, type SampleId } from "@/lib/course/samples";
-import type { Attempt, EnrollmentView } from "@/lib/course/types";
+import type { Attempt, EnrollmentView, LimitedEnrollmentView } from "@/lib/course/types";
 import { AttemptResult } from "./attempt-result";
 import { CourseShownProvider, shownFor, useCourseShown } from "./course-shown";
 import { useCleanMode } from "./clean-mode";
@@ -311,11 +311,47 @@ function AfterFail({ enrollment, attempt, onTick, onReviewed }: { enrollment: En
   );
 }
 
+/** The server sent status and scores only: this browser isn't the one that bought, nor the course team's. */
+class LimitedView extends Error {
+  constructor(readonly view: LimitedEnrollmentView) {
+    super("limited");
+  }
+}
+
+/** Someone else's purchase: where it stands and the scores, without the learner's name or answers. */
+function LimitedLearner({ view }: { view: LimitedEnrollmentView }) {
+  return (
+    <Card data-testid="learner-limited">
+      <CardHeader title="A learner's page" description="Only the learner's own browser, the one that bought the course, and the course team see their name and answers. Here is where the purchase stands, and the scores." />
+      <CardBody className="space-y-2 text-sm text-zinc-700">
+        <p>
+          Status: <span data-testid="limited-status" className="font-medium text-zinc-900">{view.status.replace(/_/g, " ")}</span>
+        </p>
+        {view.attempts.length ? (
+          <ul className="space-y-1">
+            {view.attempts.map((a) => (
+              <li key={a.number} data-testid="limited-attempt" className="tabular-nums">
+                Attempt {a.number}: {a.score} / 100{a.flagged ? ", flagged" : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No attempts yet.</p>
+        )}
+        <p className="text-xs text-zinc-500">
+          Is this your purchase? Open it in the browser you bought in. On the course team? <Link href="/team" className="underline">Sign in on /team</Link>.
+        </p>
+      </CardBody>
+    </Card>
+  );
+}
+
 export function LearnerScreen({ id }: { id: string }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [enrollment, setEnrollment] = useState<EnrollmentView | null>(null);
   const [missing, setMissing] = useState(false);
+  const [limited, setLimited] = useState<LimitedEnrollmentView | null>(null);
   const [grading, setGrading] = useState(false);
   const [gradingProblem, setGradingProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -324,7 +360,11 @@ export function LearnerScreen({ id }: { id: string }) {
     setTimeout(() => setBusy(false), seconds * 1000);
   }, []);
   const url = `/api/enrollments/${id}`;
-  const load = useCallback(() => kitFetch<EnrollmentView>(url), [kitFetch, url]);
+  const load = useCallback(async () => {
+    const view = await kitFetch<EnrollmentView | LimitedEnrollmentView>(url);
+    if ("limited" in view) throw new LimitedView(view);
+    return view;
+  }, [kitFetch, url]);
   // Only this enrollment's own PayPal webhooks, and each one refreshes the page: it may have settled something.
   const { steps } = useTimeline({ includeGlobal: false, channels: [enrollmentChannel(id)], onEvent: (e) => void (e.kind === "webhook" && load().then(setEnrollment).catch(() => undefined)) });
   const { status, refund } = enrollment ?? {};
@@ -334,7 +374,7 @@ export function LearnerScreen({ id }: { id: string }) {
     let live = true;
     load()
       .then((e) => live && setEnrollment(e))
-      .catch(() => live && setMissing(true));
+      .catch((e) => live && (e instanceof LimitedView ? setLimited(e.view) : setMissing(true)));
     return () => {
       live = false;
     };
@@ -373,6 +413,7 @@ export function LearnerScreen({ id }: { id: string }) {
 
   const timelineSteps = useMemo(() => steps.filter(isCourseStep).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
+  if (limited) return <LimitedLearner view={limited} />;
   if (missing) return <EmptyState title="We can't find that enrollment" description="It may have been cleared." action={<Link href="/course" className="text-sm font-medium text-brand">Back to the course</Link>} />;
   if (!enrollment) return <SkeletonCard />;
 
