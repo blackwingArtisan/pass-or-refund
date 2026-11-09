@@ -45,18 +45,32 @@ const finishing = singleton("course:finishing-purchase", () => new Map<string, P
 
 /** Called when anyone looks at an unpaid enrollment, so a reload is enough to get a learner unstuck. */
 export async function recoverPayment(enrollment: Enrollment): Promise<Enrollment> {
-  // A capture is still on its way back from PayPal: that's this purchase finishing, not one we lost.
-  const running = finishing.get(enrollment.id);
-  if (running) return running.catch(() => requireEnrollment(enrollment.id));
   return paidAtPayPal(enrollment);
 }
 
-/** The enrollment rebuilt from PayPal's order if PayPal took the money, else as it was. */
-async function paidAtPayPal(enrollment: Enrollment): Promise<Enrollment> {
+/**
+ * PayPal has answered about an order. PayPal says COMPLETED the moment it takes the money, before
+ * our own capture call has come back and been saved, so a capture of ours that is running (or
+ * finished while PayPal answered) is this purchase finishing, not one we lost: wait for it and
+ * keep what it saved. Only then, with the record still unpaid, is the payment rebuilt from PayPal's
+ * order and marked recovered. `own` is the capture itself checking first, which mustn't wait on itself.
+ */
+async function afterPayPalAnswered(id: string, order: Order | null, own = false): Promise<Enrollment | null> {
+  const running = own ? undefined : finishing.get(id);
+  if (running) return running.catch(() => requireEnrollment(id));
+  const latest = requireEnrollment(id);
+  if (latest.status !== "unpaid") return latest;
+  return order ? fromCompletedOrder(latest, order) : null;
+}
+
+/** The enrollment rebuilt from PayPal's order if PayPal took the money and nothing of ours saved it, else as it is now. */
+async function paidAtPayPal(enrollment: Enrollment, own = false): Promise<Enrollment> {
   const orderId = enrollment.payment?.orderId;
   if (enrollment.status !== "unpaid" || !orderId) return enrollment;
+  const running = own ? undefined : finishing.get(enrollment.id);
+  if (running) return running.catch(() => requireEnrollment(enrollment.id));
   const order = await getPayPal().orders.get(orderId).catch(() => null);
-  return (order && fromCompletedOrder(enrollment, order)) ?? enrollment;
+  return (await afterPayPalAnswered(enrollment.id, order, own)) ?? requireEnrollment(enrollment.id);
 }
 
 /**
@@ -70,8 +84,8 @@ export async function resumePurchase(learnerEmail: string, channel: string, cour
     const orderId = enrollment.payment!.orderId;
     const order = await getPayPal().orders.get(orderId).catch(() => null);
     if (!order) continue;
-    const paid = fromCompletedOrder(enrollment, order);
-    if (paid) return paid;
+    const paid = await afterPayPalAnswered(enrollment.id, order);
+    if (paid && paid.status !== "unpaid") return paid;
     if (order.status === "APPROVED") return completePurchase(enrollment.id, orderId, channel);
   }
   return null;
@@ -113,18 +127,20 @@ export async function checkCheckout(id: string, channel: string): Promise<Enroll
   const enrollment = requireEnrollment(id);
   const orderId = enrollment.payment?.orderId;
   if (enrollment.status !== "unpaid" || !orderId) return enrollment;
+  // The buyer's approval already reached us and the capture is on its way: wait for it.
+  const running = finishing.get(id);
+  if (running) return running.catch(() => requireEnrollment(id));
   const order = await getPayPal().orders.get(orderId).catch(() => null);
-  if (!order) return enrollment;
-  const paid = fromCompletedOrder(enrollment, order);
+  const paid = await afterPayPalAnswered(id, order);
   if (paid) return paid;
-  return order.status === "APPROVED" ? completePurchase(id, orderId, channel) : enrollment;
+  return order?.status === "APPROVED" ? completePurchase(id, orderId, channel) : requireEnrollment(id);
 }
 
 async function capturePurchase(id: string, orderId: string, channel: string): Promise<Enrollment> {
   const enrollment = requireEnrollment(id);
   if (enrollment.payment?.orderId !== orderId) throw new HttpError(409, "That PayPal order doesn't belong to this purchase.", "conflict");
   if (enrollment.status !== "unpaid") return enrollment;
-  const recovered = await paidAtPayPal(enrollment);
+  const recovered = await paidAtPayPal(enrollment, true);
   if (recovered.status !== "unpaid") return recovered;
 
   // A learner's payment counts against its own daily count, never against what can be refunded.
@@ -137,7 +153,8 @@ async function capturePurchase(id: string, orderId: string, channel: string): Pr
   }
   const capture = result.output as { order_status: string; capture_id: string; capture_status: string; amount: { currency_code: string; value: string }; payer_id?: string; payer_email?: string };
   if (capture.capture_status !== "COMPLETED") throw new HttpError(402, `PayPal shows this payment as ${capture.capture_status}, so the course isn't unlocked yet.`, "capture_failed");
-  return recordPayment(enrollment, {
+  // Saved over the record as it is now, not as it was before PayPal answered.
+  return recordPayment(requireEnrollment(id), {
     orderId,
     orderStatus: capture.order_status,
     captureId: capture.capture_id,

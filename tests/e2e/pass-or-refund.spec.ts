@@ -950,6 +950,10 @@ test.describe("mock-safe flows", () => {
     const id = page.url().split("/learn/")[1];
     const { payment } = await enrollmentOf(request, id);
     expect(payment).toMatchObject({ captureStatus: "COMPLETED", capturedCents: COURSE_PRICE_CENTS });
+    // A normal card purchase is not a recovered one: the page's checks while PayPal's window was open wait for our capture.
+    expect(payment?.recovered).toBeUndefined();
+    await expect(page.getByTestId("submit-attempt")).toBeVisible();
+    await expect(page.getByTestId("payment-recovered")).toHaveCount(0);
     const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
     console.log("PayPal window purchase:", JSON.stringify({ order: [paypal.order.id, paypal.order.status], capture: [paypal.capture.id, paypal.capture.status, paypal.capture.amount.value] }));
     expect(paypal.order.status).toBe("COMPLETED");
@@ -973,6 +977,9 @@ test.describe("mock-safe flows", () => {
     await popup.waitForEvent("close", { timeout: 30_000 });
     await page.waitForURL(/\/learn\/en_/, { timeout: 30_000 });
     const { payment } = await enrollmentOf(request, page.url().split("/learn/")[1]);
+    // The page found the approval and our capture took the money: nothing was lost, so nothing is "recovered".
+    expect(payment?.recovered).toBeUndefined();
+    await expect(page.getByTestId("payment-recovered")).toHaveCount(0);
     const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
     console.log("PayPal re-read:", JSON.stringify({ silentWindow: [paypal.order.id, paypal.order.status, paypal.capture.id, paypal.capture.status] }));
     expect(paypal.order).toMatchObject({ id: orderId, status: "COMPLETED" });
@@ -1426,6 +1433,32 @@ test.describe("mock-safe flows", () => {
     }
     return { id: enrollmentId as string, orderId: orderId as string };
   }
+
+  test("a normal purchase never says it was recovered, even with the page asking PayPal while the capture runs", { tag: "@live" }, async ({ page, request }) => {
+    const { enrollmentId, orderId } = await (await request.post("/api/enrollments", { data: { learnerName: "Nia Normal", learnerEmail: newEmail("Nia Normal") } })).json();
+    const sandbox = (await mode(request)) === "sandbox";
+    expect((await request.post(sandbox ? `/api/dev/sandbox/approve-order/${orderId}` : `/api/dev/mock/approve-order/${orderId}`, sandbox ? undefined : { data: { email: newEmail("paypal.nia") } })).ok()).toBe(true);
+    // PayPal's window reports the approval while the course page keeps asking PayPal about the order, as it does with the window open.
+    const asLearner = { headers: { "x-kit-session": `enrollment:${enrollmentId}` } };
+    const checks = Array.from({ length: 4 }, (_, i) =>
+      new Promise((r) => setTimeout(r, i * 150)).then(() => request.post(`/api/enrollments/${enrollmentId}/check-payment`, asLearner)),
+    );
+    const paid = await request.post(`/api/enrollments/${enrollmentId}/pay`, { data: { orderId }, ...asLearner });
+    expect(paid.ok()).toBe(true);
+    for (const check of await Promise.all(checks)) expect(check.ok()).toBe(true);
+    const { payment, status } = await enrollmentOf(request, enrollmentId);
+    expect(status).toBe("active");
+    expect(payment).toMatchObject({ orderId, captureStatus: "COMPLETED", capturedCents: COURSE_PRICE_CENTS });
+    expect(payment?.recovered).toBeUndefined();
+    await page.goto(`/learn/${enrollmentId}`);
+    await expect(page.getByTestId("submit-attempt")).toBeVisible();
+    await expect(page.getByTestId("payment-recovered")).toHaveCount(0);
+    if (sandbox) {
+      const paypal = await readPayPalObjects(orderId, payment!.captureId!);
+      console.log("PayPal re-read:", JSON.stringify({ normalPurchase: [paypal.order.id, paypal.order.status, paypal.capture.id, paypal.capture.status] }));
+      expect(paypal.order.purchase_units[0].payments.captures).toHaveLength(1);
+    }
+  });
 
   test("the app stops after PayPal takes the money: buying again finds the payment, with no second charge", { tag: "@live" }, async ({ page, request }) => {
     const email = newEmail("Ana Stuck");
