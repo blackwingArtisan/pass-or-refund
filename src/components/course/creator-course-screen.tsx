@@ -11,6 +11,7 @@ import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonC
 import { formatCents, MAX_ANSWER_CHARS } from "@/lib/course/policy";
 import { BuyBox } from "./course-screen";
 import { Guarantee } from "./guarantee";
+import { EarningsCard } from "./earnings-card";
 import type { GradedAttempt } from "@/lib/course/types";
 import type { Rubric } from "@/lib/grading/frozen/score-items";
 
@@ -134,6 +135,7 @@ export function CreatorCourseScreen({ id }: { id: string }) {
             </BuyBox>
           </CardBody>
         </Card>
+        <EarningsCard course={course.id} />
         <Card>
           <CardHeader title="The rubric" description="Public, before anyone answers." />
           <CardBody className="space-y-4 text-sm">

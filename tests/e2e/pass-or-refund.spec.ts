@@ -704,6 +704,138 @@ test.describe("the story on the first screen", () => {
     await checkReceiptOnRubricPage(page, JSON.stringify(receipt), "matches");
   });
 
+  test("a creator's earnings card: sold, refunded, net and refund rate, each read back from PayPal, at the creator's own price", { tag: "@live" }, async ({ page, request }) => {
+    if (process.env.E2E_BASE_URL) test.setTimeout(600_000);
+    const sandbox = (await mode(request)) === "sandbox";
+    // The creator's course: the sample rubric's questions under a new title, at $39 (the sample sells at $49).
+    const sampleRubric = await (await request.get("/api/rubric/1")).json();
+    const title = `Whetstone Care ${Date.now().toString(36)}`;
+    const made = await request.post("/api/creator/courses", { data: { pasted: JSON.stringify({ ...sampleRubric, title }), price: "39" } });
+    expect(made.ok()).toBe(true);
+    const course = (await made.json()) as { id: string; fingerprint: string; path: string; priceCents: number };
+    expect(course.priceCents).toBe(3900);
+    const card = page.getByRole("main").getByTestId("earnings-card");
+    await page.goto(course.path);
+    await expect(card.getByTestId("earnings-sold")).toHaveText("$0.00");
+    await expect(card.getByTestId("earnings-refund-rate")).toHaveText("0%");
+
+    const buyAt = async (name: string) => {
+      await page.goto(`${course.path}?test-card=1`);
+      const buyBox = page.getByTestId("creator-buy");
+      await expect(buyBox).toContainText("$39.00");
+      await buyBox.getByTestId("learner-name").fill(name);
+      await buyBox.getByTestId("learner-email").fill(newEmail(name));
+      if (sandbox) await buyBox.getByTestId("sandbox-test-card").click();
+      else {
+        await buyBox.getByTestId("simulate-paypal-approval").click();
+        await page.getByTestId("mock-approve").click();
+      }
+      await page.waitForURL(/\/learn\/en_/, { timeout: 60_000 });
+      return page.url().split("/learn/")[1];
+    };
+    const answerWith = async (answers: Record<string, string>, number: number) => {
+      for (const [q, text] of Object.entries(answers)) await page.getByTestId(`answer-${q}`).fill(text);
+      await submitAttempt(page);
+      await expect(page.getByTestId(`attempt-${number}`)).toBeVisible({ timeout: 120_000 });
+    };
+    // One learner fails twice and is refunded through PayPal; the other keeps the course.
+    const refundedId = await buyAt("Wren Whetstone");
+    await answerWith(samples.fail1, 1);
+    await studyThenRetry(page, false);
+    await answerWith(samples.fail2, 2);
+    await expect(page.getByTestId("refund-waiting")).toBeVisible({ timeout: 90_000 });
+    await approveOnTeam(page, refundedId);
+    await page.goto(`/learn/${refundedId}`);
+    await expect(page.getByTestId("refund-status")).toHaveText(/COMPLETED|PENDING/, { timeout: 60_000 });
+    const keptId = await buyAt("Kit Keeper");
+
+    // What PayPal itself holds for the two orders, read straight from PayPal (sandbox) or the app's record of it (mock).
+    const [refunded, kept] = [await enrollmentOf(request, refundedId), await enrollmentOf(request, keptId)];
+    let expected = { sold: 7800, refunded: 3900 };
+    if (sandbox) {
+      const a = await readPayPalObjects(refunded.payment!.orderId, refunded.payment!.captureId!, refunded.refund!.refundId);
+      const b = await readPayPalObjects(kept.payment!.orderId, kept.payment!.captureId!);
+      const c = (v?: string) => Math.round(Number(v ?? 0) * 100);
+      expected = { sold: c(a.capture.amount.value) + c(b.capture.amount.value), refunded: a.refund?.status === "COMPLETED" ? c(a.refund.amount.value) : 0 };
+      console.log("PayPal re-read:", JSON.stringify({ earnings: [course.id, [a.order.id, a.capture.amount.value, a.capture.status, a.refund?.id, a.refund?.status], [b.order.id, b.capture.amount.value, b.capture.status]] }));
+      expect(a.order.purchase_units[0].invoice_id).toMatch(new RegExp(`^PR-v1-${course.fingerprint}-${refundedId}$`));
+    }
+    expect(expected.sold).toBe(7800);
+
+    // The card on the course page, read back from PayPal just now.
+    const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    await page.goto(course.path);
+    await expect(card.getByTestId("earnings-sold")).toHaveText(usd(expected.sold));
+    await expect(card.getByTestId("earnings-refunded")).toHaveText(usd(expected.refunded));
+    await expect(card.getByTestId("earnings-net")).toHaveText(usd(expected.sold - expected.refunded));
+    await expect(card.getByTestId("earnings-refund-rate")).toHaveText(expected.refunded ? "50%" : "0%");
+    await expect(card.getByTestId("earnings-source")).toContainText(`2 × GET /v2/checkout/orders/{id}`);
+    await expect(card.getByTestId("earnings-source")).toContainText(course.fingerprint);
+    const api = (await (await request.get(`/api/creator/courses/${course.id}/earnings`)).json()) as { sales: number; refunds: number; soldCents: number; refundedCents: number; orders: { orderId: string }[] };
+    expect(api).toMatchObject({ sales: 2, soldCents: expected.sold, refundedCents: expected.refunded });
+    expect(api.orders.map((o) => o.orderId).sort()).toEqual([refunded.payment!.orderId, kept.payment!.orderId].sort());
+    // The sample course's sale price never leaks in: these are the creator's own $39 orders.
+    expect(JSON.stringify(api)).not.toContain("49.00");
+
+    // The same card on /creator, for the creator who comes back to it.
+    for (const [width, height] of [
+      [390, 844],
+      [1280, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await page.goto(`/creator?course=${course.id}`);
+      const mine = page.getByRole("main").getByTestId("earnings-card");
+      await expect(mine.getByTestId("earnings-sold")).toHaveText(usd(expected.sold));
+      await expect(mine.getByTestId("earnings-net")).toHaveText(usd(expected.sold - expected.refunded));
+      const { wide, room } = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide).toBe(room);
+      await mine.screenshot({ path: `screenshots/creator-earnings-${width}.png` });
+      await page.goto(course.path);
+      await expect(card.getByTestId("earnings-sold")).toHaveText(usd(expected.sold));
+      await page.screenshot({ path: `screenshots/course-earnings-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  });
+
+  test("/cohort's earnings card is the sample course's own: its $49 orders, read back from PayPal", { tag: "@live" }, async ({ page, request }) => {
+    const sandbox = (await mode(request)) === "sandbox";
+    const id = await buy(page, request, "Ines Okafor");
+    const { payment } = await enrollmentOf(request, id);
+    if (sandbox) {
+      const paypal = await readPayPalObjects(payment!.orderId, payment!.captureId!);
+      console.log("PayPal re-read:", JSON.stringify({ sampleEarnings: [paypal.order.id, paypal.order.purchase_units[0].invoice_id, paypal.capture.amount.value, paypal.capture.status] }));
+      expect(paypal.capture.amount.value).toBe("49.00");
+    }
+    const api = (await (await request.get("/api/creator/courses/sample/earnings")).json()) as { fingerprint: string; priceCents: number; soldCents: number; refundedCents: number; netCents: number; orders: { orderId: string; invoiceId?: string; capturedCents: number }[] };
+    expect(api.priceCents).toBe(4900);
+    expect(api.orders.map((o) => o.orderId)).toContain(payment!.orderId);
+    // Every order it counts carries the sample rubric's fingerprint and the sample's own price; no creator's course leaks in.
+    for (const o of api.orders) {
+      expect(o.invoiceId).toMatch(new RegExp(`^PR-v[^-]+-${api.fingerprint}-`));
+      expect(o.capturedCents).toBe(4900);
+    }
+    expect(api.soldCents).toBe(api.orders.reduce((sum, o) => sum + o.capturedCents, 0));
+
+    const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    for (const [width, height] of [
+      [390, 844],
+      [1280, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/cohort");
+      const card = page.getByRole("main").getByTestId("earnings-card");
+      await expect(card.getByTestId("earnings-sold")).toHaveText(usd(api.soldCents));
+      await expect(card.getByTestId("earnings-refunded")).toHaveText(usd(api.refundedCents));
+      await expect(card.getByTestId("earnings-net")).toHaveText(usd(api.netCents));
+      await expect(card.getByTestId("earnings-source")).toContainText(api.fingerprint);
+      await expect(card).toContainText("$49.00");
+      const { wide, room } = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide).toBe(room);
+      await card.screenshot({ path: `screenshots/cohort-earnings-${width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  });
+
   test("a learner downloads a grade receipt and the public rubric page says matches, or changed once a verdict is edited", { tag: "@live" }, async ({ page, request }) => {
     await page.goto("/learn/sample_pass");
     await page.getByTestId("grade-receipt-link").click();
@@ -864,9 +996,14 @@ test.describe("mock-safe flows", () => {
       const numbers = studio.locator(".ag-studio-value-widget");
       await expect(numbers).toHaveCount(4);
       await page.setViewportSize({ width: 1440, height: 1400 });
+      // The earnings card above the studio reads PayPal on load; once it's in, nothing below moves.
+      await expect(page.getByRole("main").getByTestId("earnings-sold")).toBeVisible();
       await page.getByTestId("studio-edit").click();
       await expect(studio.getByText("Compose", { exact: true })).toBeVisible();
-      const tile = await studio.getByText("KPI", { exact: true }).last().boundingBox();
+      // The card pushes the studio down, so bring the Compose panel's KPI tile on screen before clicking it.
+      const kpi = studio.getByText("KPI", { exact: true }).last();
+      await kpi.scrollIntoViewIfNeeded();
+      const tile = await kpi.boundingBox();
       await page.mouse.click(tile!.x + tile!.width / 2, tile!.y - 10);
       await expect(numbers).toHaveCount(5);
       await page.reload();
