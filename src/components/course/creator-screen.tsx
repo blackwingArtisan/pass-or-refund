@@ -9,6 +9,7 @@ import { Button, Card, CardBody, CardHeader, Field, Input, Textarea } from "@/co
 import { formToInput, LIMITS, PRICE_DOLLARS, type RubricForm } from "@/lib/course/creator-rubric";
 import { formatCents } from "@/lib/course/policy";
 import { EarningsCard } from "./earnings-card";
+import { ExampleCourseLink } from "./example-course-link";
 
 interface Published {
   id: string;
@@ -48,7 +49,7 @@ function rememberCourse(id: string): string[] {
 }
 
 /** A creator sets up their own rubric: no account, no payment. They get its fingerprint and a link to share. */
-export function CreatorScreen() {
+export function CreatorScreen({ exampleHref }: { exampleHref?: string }) {
   const { kitFetch } = useKit();
   const [mode, setMode] = useState<"form" | "json">("form");
   const [form, setForm] = useState<RubricForm>(STARTER);
@@ -98,6 +99,7 @@ export function CreatorScreen() {
         eyebrow="For course creators"
         title="Put your own course on the guarantee"
         description="Write the final check's rubric: the questions, and what a good answer says with its points. You get its fingerprint and a link to share. The same grader marks every answer against exactly these words."
+        actions={exampleHref ? <ExampleCourseLink href={exampleHref} testId="creator-example-course" where="creator" /> : undefined}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <Card>

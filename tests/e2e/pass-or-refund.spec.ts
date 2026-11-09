@@ -2192,6 +2192,71 @@ test.describe("mock-safe flows", () => {
     });
   });
 
+  test("the learner page's three steps, Buy, Take the test, Pass or refund, mark where the learner is, at 1440 and 390", { tag: "@live" }, async ({ page, request }) => {
+    const strip = page.getByTestId("progress-strip");
+    const states = async () => Promise.all(["buy", "test", "result"].map((s) => strip.getByTestId(`progress-step-${s}`).getAttribute("data-state")));
+    const id = await buy(page, request, "Stella Steps");
+    // Just bought: Buy is done with what PayPal took, the test is where the learner is.
+    expect(await states()).toEqual(["done", "current", "todo"]);
+    await expect(strip.getByTestId("progress-detail-buy")).toHaveText(`$${PRICE} paid through PayPal`);
+    await expect(strip.getByTestId("progress-step-test")).toHaveAttribute("aria-current", "step");
+    // It sits at the top of the page, above the guarantee.
+    expect((await strip.boundingBox())!.y).toBeLessThan((await page.getByTestId("receipt").boundingBox())!.y);
+    for (const screen of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(screen);
+      await page.goto(`/learn/${id}`);
+      await expect(strip.getByTestId("progress-step-test")).toHaveAttribute("data-state", "current");
+      // Three steps side by side, all inside the screen.
+      for (const s of ["buy", "test", "result"]) {
+        const box = (await strip.getByTestId(`progress-step-${s}`).boundingBox())!;
+        expect(box.x + box.width, `${s} inside ${screen.width}`).toBeLessThanOrEqual(screen.width);
+      }
+      const { wide, room } = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth, room: window.innerWidth }));
+      expect(wide).toBe(room);
+      await page.screenshot({ path: `screenshots/learner-progress-${screen.width}.png` });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // The made-up sample learner: every step done, and no PayPal payment claimed.
+    await page.goto("/learn/sample_pass");
+    expect(await states()).toEqual(["done", "done", "done"]);
+    await expect(strip.getByTestId("progress-detail-buy")).toHaveText("Enrolled");
+    await expect(strip.getByTestId("progress-detail-result")).toContainText("Passed");
+    if (LIVE_AI) return;
+    // After two fails (mock grader): Pass or refund is where the learner is, waiting on a person.
+    await page.goto(`/learn/${id}`);
+    await failTwice(page);
+    await expect(page.getByTestId("refund-waiting").or(page.getByTestId("refund-in-review"))).toBeVisible({ timeout: 60_000 });
+    expect(await states()).toEqual(["done", "done", "current"]);
+    await expect(strip.getByTestId("progress-detail-test")).toHaveText(/^Tries: \d+, then \d+$/);
+    await expect(strip.getByTestId("progress-step-result")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("a course a creator made here: one live course set up through /creator, linked from /creator and the home page", { tag: "@live" }, async ({ page, request }) => {
+    await page.goto("/");
+    const fromHome = page.getByTestId("landing-example-course");
+    await expect(fromHome).toHaveText(/A course a creator made here/);
+    // Said plainly who made it.
+    await expect(page.getByTestId("landing-example-course-who")).toContainText("by the app’s team");
+    const href = (await fromHome.getAttribute("href"))!;
+    expect(href).toMatch(/^\/c\/cc_[0-9a-f]{12}$/);
+    await page.goto("/creator");
+    await expect(page.getByTestId("creator-example-course")).toHaveAttribute("href", href);
+    await expect(page.getByTestId("creator-example-course-who")).toContainText("Made on this form");
+    await page.getByTestId("creator-example-course").click();
+    await page.waitForURL(new RegExp(`${href}$`));
+    // Its link carries its own rubric's fingerprint: the course the creator flow published, at its own price.
+    const id = href.split("/c/")[1];
+    const course = (await (await request.get(`/api/creator/courses/${id}`)).json()) as { id: string; fingerprint: string; rubricText: string; priceCents: number; rubric: { title: string } };
+    expect(course.id).toBe(id);
+    expect(id).toBe(`cc_${createHash("sha256").update(course.rubricText).digest("hex").slice(0, 12)}`);
+    expect(course.priceCents).toBe(1900);
+    await expect(page.getByRole("heading", { name: course.rubric.title })).toBeVisible();
+    await expect(page.getByTestId("creator-buy")).toContainText("$19.00");
+  });
+
   test("every page fits a phone with no sideways scroll", async ({ page, request }) => {
     const id = await buy(page, request, "Phoebe Phone");
     await attempt(page, "fail1", 1);

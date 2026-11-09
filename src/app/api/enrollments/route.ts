@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { creatorCourse } from "@/lib/course/creator-store";
+import { restoreIfExample } from "@/lib/course/example-creator-course";
 import { learnerCookie, withOwnerKey } from "@/lib/course/learner-access";
 import { resumePurchase, startPurchase } from "@/lib/course/purchase";
 import { getContext } from "@/lib/events/bus";
@@ -19,6 +20,7 @@ const Body = z.object({ learnerName: plainName, learnerEmail: z.email().max(200)
 export const POST = route(async (req) => {
   const { learnerName, learnerEmail, courseId } = await readJson(req, Body);
   // A creator's course must exist, with its rubric still matching its link, before anyone pays for it.
+  restoreIfExample(courseId);
   if (courseId) creatorCourse(courseId);
   // The browser that starts the purchase holds its owner key, so it alone (and the course team) reads the learner's name and answers.
   const owned = (enrollment: { id: string; ownerKey?: string }, body: object) => {
