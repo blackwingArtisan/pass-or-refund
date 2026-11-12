@@ -2,7 +2,7 @@
 
 > Online courses that pay you back if they can't teach you: Claude grades the final check against a public rubric, and a second fail sends a real PayPal refund to a person for approval.
 
-**Live demo:** https://pass-or-refund.onrender.com · **Video (3 min or less):** link added at submission · **License:** MIT
+**Live demo:** https://pass-or-refund.onrender.com · **Video (3 min or less):** https://youtu.be/-HSBcMwgfaY · **License:** MIT
 
 ## Why this matters
 
